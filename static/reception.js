@@ -11,48 +11,29 @@ async function showToast(message, type = 'info') {
 
 const billRoomSelect = document.getElementById('bill-room-id');
 
-async function loadAvailableRooms() {
-  try {
-    const res = await fetch(`${API_BASE}/hotel/rooms/available`);
-    const rooms = await res.json();
-    const checkinSelect = document.getElementById('checkin-room-id');
-    checkinSelect.innerHTML = '<option value="">请选择房间</option>';
-    rooms.forEach(room => {
-      if (room.status === 'AVAILABLE') {
-        const option = document.createElement('option');
-        option.value = room.id;
-        option.textContent = `房间 ${room.id}`;
-        checkinSelect.appendChild(option);
-      }
-    });
-  } catch (error) {
-    showToast('加载可用房间失败', 'error');
-  }
-}
 
 async function loadAllRooms() {
   try {
     const res = await fetch(`${API_BASE}/monitor/roomstatus`);
     const rooms = await res.json();
-    const checkoutSelect = document.getElementById('checkout-room-id');
     const tbody = document.getElementById('rooms-body');
     
-    checkoutSelect.innerHTML = '<option value="">请选择房间</option>';
-    billRoomSelect.innerHTML = '<option value="">请选择房间</option>';
-    tbody.innerHTML = '';
+    if (billRoomSelect) {
+      billRoomSelect.innerHTML = '<option value="">请选择房间</option>';
+    }
+    if (tbody) {
+      tbody.innerHTML = '';
+    }
     
     rooms.forEach(room => {
-      const optionAll = document.createElement('option');
-      optionAll.value = room.roomId;
-      optionAll.textContent = `房间 ${room.roomId}`;
-      billRoomSelect.appendChild(optionAll);
-
-      if (room.roomStatus === 'OCCUPIED') {
-        const option = document.createElement('option');
-        option.value = room.roomId;
-        option.textContent = `房间 ${room.roomId}`;
-        checkoutSelect.appendChild(option);
+      if (billRoomSelect) {
+        const optionAll = document.createElement('option');
+        optionAll.value = room.roomId;
+        optionAll.textContent = `房间 ${room.roomId}`;
+        billRoomSelect.appendChild(optionAll);
       }
+      
+      if (!tbody) return;
       
       const tr = document.createElement('tr');
       const statusClass = room.roomStatus === 'OCCUPIED' ? 'status-occupied' : 
@@ -61,8 +42,16 @@ async function loadAllRooms() {
       const formatDateTime = (dateStr) => {
         if (!dateStr) return '--';
         try {
-          const date = new Date(dateStr);
+          let date;
+          if (dateStr.endsWith('Z')) {
+            date = new Date(dateStr);
+          } else if (dateStr.includes('T') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
+            date = new Date(dateStr + 'Z');
+          } else {
+            date = new Date(dateStr);
+          }
           return date.toLocaleString('zh-CN', { 
+            timeZone: 'Asia/Shanghai',
             year: 'numeric', 
             month: '2-digit', 
             day: '2-digit', 
@@ -83,9 +72,9 @@ async function loadAllRooms() {
         <td>${formatDateTime(room.checkInTime)}</td>
         <td>
           ${room.roomStatus === 'OCCUPIED' ? 
-            `<button class="btn btn-danger btn-sm" onclick="checkoutRoom(${room.roomId})">退房</button>` : 
+            `<a href="/reception/checkout?roomId=${room.roomId}" class="btn btn-danger btn-sm" style="text-decoration: none; display: inline-block;">退房</a>` : 
             room.roomStatus === 'AVAILABLE' ? 
-            `<button class="btn btn-primary btn-sm" onclick="quickCheckin(${room.roomId})">快速入住</button>` : 
+            `<a href="/reception/checkin?roomId=${room.roomId}" class="btn btn-primary btn-sm" style="text-decoration: none; display: inline-block;">入住</a>` : 
             '--'}
         </td>
       `;
@@ -105,81 +94,9 @@ function getStatusText(status) {
   return map[status] || status;
 }
 
-document.getElementById('checkin-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const roomId = parseInt(document.getElementById('checkin-room-id').value);
-  const name = document.getElementById('checkin-name').value;
-  const idCard = document.getElementById('checkin-id-card').value;
-  const phone = document.getElementById('checkin-phone').value;
-  
-  if (!roomId || !name) {
-    showToast('请填写必填项', 'error');
-    return;
-  }
-  
-  try {
-    const res = await fetch(`${API_BASE}/hotel/checkin`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomId, name, idCard, phoneNumber: phone })
-    });
-    const data = await res.json();
-    if (res.ok) {
-      showToast(data.message || '入住成功', 'success');
-      document.getElementById('checkin-form').reset();
-      loadAvailableRooms();
-      loadAllRooms();
-    } else {
-      showToast(data.error || '入住失败', 'error');
-    }
-  } catch (error) {
-    showToast('办理入住失败', 'error');
-  }
-});
-
-document.getElementById('checkout-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const roomId = parseInt(document.getElementById('checkout-room-id').value);
-  if (!roomId) {
-    showToast('请选择房间', 'error');
-    return;
-  }
-  
-  try {
-    const res = await fetch(`${API_BASE}/hotel/checkout/${roomId}`, {
-      method: 'POST'
-    });
-    const data = await res.json();
-    if (res.ok) {
-      const resultDiv = document.getElementById('checkout-result');
-      resultDiv.className = 'result show';
-      resultDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
-      showToast('退房成功', 'success');
-      document.getElementById('checkout-form').reset();
-      loadAvailableRooms();
-      loadAllRooms();
-    } else {
-      showToast(data.error || '退房失败', 'error');
-    }
-  } catch (error) {
-    showToast('办理退房失败', 'error');
-  }
-});
-
 document.getElementById('btn-refresh-rooms').addEventListener('click', () => {
-  loadAvailableRooms();
   loadAllRooms();
 });
-
-window.checkoutRoom = async function(roomId) {
-  document.getElementById('checkout-room-id').value = roomId;
-  document.getElementById('checkout-form').dispatchEvent(new Event('submit'));
-};
-
-window.quickCheckin = function(roomId) {
-  document.getElementById('checkin-room-id').value = roomId;
-  document.getElementById('checkin-name').focus();
-};
 
 function renderBills(bills = []) {
   const container = document.getElementById('bills-result');
@@ -192,7 +109,16 @@ function renderBills(bills = []) {
   const formatDate = (value) => {
     if (!value) return '--';
     try {
-      return new Date(value).toLocaleString('zh-CN', {
+      let date;
+      if (value.endsWith('Z')) {
+        date = new Date(value);
+      } else if (value.includes('T') && !value.includes('+') && !value.includes('-', 10)) {
+        date = new Date(value + 'Z');
+      } else {
+        date = new Date(value);
+      }
+      return date.toLocaleString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
@@ -279,6 +205,5 @@ document.getElementById('btn-fetch-all-bills').addEventListener('click', async (
   }
 });
 
-loadAvailableRooms();
 loadAllRooms();
 

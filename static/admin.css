@@ -114,10 +114,12 @@ th {
 
 .queue-serving {
   color: #10b981;
+  font-weight: 500;
 }
 
 .queue-waiting {
   color: #f59e0b;
+  font-weight: 500;
 }
 
 .queues {
@@ -139,13 +141,35 @@ th {
 
 .queues ul {
   list-style: none;
+  padding: 0;
+  margin: 0;
 }
 
 .queues li {
-  padding: 8px;
-  margin-bottom: 5px;
+  padding: 10px;
+  margin-bottom: 8px;
   background: white;
-  border-radius: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.queue-count {
+  color: #666;
+  font-size: 0.9rem;
+  font-weight: normal;
+}
+
+.ac-controls {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.ac-controls .btn-sm {
+  padding: 5px 10px;
+  font-size: 0.85rem;
 }
 
 .form {
@@ -212,6 +236,11 @@ th {
   background: #dc2626;
 }
 
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 0.9rem;
+}
+
 .result {
   margin-top: 15px;
   padding: 15px;
@@ -256,6 +285,16 @@ th {
   to {
     transform: translateX(0);
     opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .ac-controls {
+    flex-direction: column;
+  }
+  
+  .ac-controls .btn-sm {
+    width: 100%;
   }
 }
 

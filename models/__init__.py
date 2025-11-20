@@ -27,6 +27,7 @@ class Room(db.Model, TimestampMixin):
     default_temp = db.Column(db.Float, default=25.0)
     check_in_time = db.Column(db.DateTime)
     ac_session_start = db.Column(db.DateTime)
+    last_temp_update = db.Column(db.DateTime)
     assigned_ac_number = db.Column(db.Integer)
     customer_name = db.Column(db.String(50))
     waiting_start_time = db.Column(db.DateTime)

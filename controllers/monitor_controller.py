@@ -15,6 +15,13 @@ def getRoomStatus():
         ac = ac_service.getACByRoomId(room.id)
         customer = customer_service.getCustomerByRoomId(room.id) if room.status == "OCCUPIED" else None
         
+        # 获取队列状态信息
+        try:
+            ac_status = ac_schedule_service.getRoomACStatus(room.id)
+            queue_state = ac_status.get("queueState", "IDLE")
+        except:
+            queue_state = "IDLE"
+        
         status = {
             "roomId": room.id,
             "roomStatus": room.status,
@@ -24,10 +31,11 @@ def getRoomStatus():
             "fanSpeed": ac.fan_speed if ac else None,
             "mode": ac.ac_mode if ac else None,
             "acOn": ac.ac_on if ac else False,
+            "queueState": queue_state,
             "customerName": customer.name if customer else (room.customer_name if room.status == "OCCUPIED" else None),
             "customerIdCard": customer.id_card if customer else None,
             "customerPhone": customer.phone_number if customer else None,
-            "checkInTime": customer.check_in_time.isoformat() if customer and customer.check_in_time else None,
+            "checkInTime": (customer.check_in_time.isoformat() + 'Z') if customer and customer.check_in_time else None,
         }
         result.append(status)
     return jsonify(result)

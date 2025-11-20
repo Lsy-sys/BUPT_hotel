@@ -77,7 +77,14 @@ class HotelService:
         )
         bill = self.bill_service.createAndSettleBill(details, customer, room)
 
+        from ..vo.checkout_response import CustomerInfo
+        
         checkout_response = CheckoutResponse()
+        checkout_response.customer = CustomerInfo(
+            name=customer.name,
+            idCard=customer.id_card,
+            phoneNumber=customer.phone_number,
+        )
         checkout_response.detailBill = [
             DetailBill(
                 roomId=detail.room_id,

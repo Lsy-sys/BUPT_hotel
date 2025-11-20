@@ -1,7 +1,11 @@
 from flask import Flask, render_template
 
 from .config import Config
-from .database import ensure_bill_detail_update_time_column, seed_default_ac_config
+from .database import (
+    ensure_bill_detail_update_time_column,
+    ensure_room_last_temp_update_column,
+    seed_default_ac_config,
+)
 from .extensions import db
 from .services import room_service
 
@@ -16,12 +20,14 @@ def create_app(
     if setup_database:
         with app.app_context():
             db.create_all()
+            # 先确保数据库字段存在，再初始化数据
+            ensure_bill_detail_update_time_column()
+            ensure_room_last_temp_update_column()
             seed_default_ac_config()
             room_service.ensureRoomsInitialized(
                 total_count=app.config["HOTEL_ROOM_COUNT"],
                 default_temp=app.config["HOTEL_DEFAULT_TEMP"],
             )
-            ensure_bill_detail_update_time_column()
 
     from .controllers.ac_controller import ac_bp
     from .controllers.admin_controller import admin_bp
@@ -50,6 +56,14 @@ def create_app(
     @app.route("/reception")
     def reception():
         return render_template("reception.html")
+    
+    @app.route("/reception/checkin")
+    def reception_checkin():
+        return render_template("checkin.html")
+    
+    @app.route("/reception/checkout")
+    def reception_checkout():
+        return render_template("checkout.html")
 
     @app.route("/admin")
     def admin():

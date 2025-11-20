@@ -15,45 +15,17 @@
     </header>
 
     <main>
-      <div class="grid">
-        <section class="card">
+      <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin-bottom: 30px;">
+        <section class="card" style="text-align: center;">
           <h2>办理入住</h2>
-          <form id="checkin-form" class="form">
-            <label>
-              房间号
-              <select id="checkin-room-id" required>
-                <option value="">请选择房间</option>
-              </select>
-            </label>
-            <label>
-              客户姓名 <span class="required">*</span>
-              <input type="text" id="checkin-name" required>
-            </label>
-            <label>
-              身份证号
-              <input type="text" id="checkin-id-card">
-            </label>
-            <label>
-              联系电话
-              <input type="text" id="checkin-phone">
-            </label>
-            <button type="submit" class="btn btn-primary">办理入住</button>
-          </form>
-          <div id="checkin-result" class="result"></div>
+          <p style="margin: 15px 0; color: #666;">为客户办理入住手续</p>
+          <a href="/reception/checkin" class="btn btn-primary" style="text-decoration: none; display: inline-block;">前往入住页面</a>
         </section>
 
-        <section class="card">
+        <section class="card" style="text-align: center;">
           <h2>办理退房</h2>
-          <form id="checkout-form" class="form">
-            <label>
-              房间号
-              <select id="checkout-room-id" required>
-                <option value="">请选择房间</option>
-              </select>
-            </label>
-            <button type="submit" class="btn btn-danger">办理退房</button>
-          </form>
-          <div id="checkout-result" class="result"></div>
+          <p style="margin: 15px 0; color: #666;">为客户办理退房手续</p>
+          <a href="/reception/checkout" class="btn btn-danger" style="text-decoration: none; display: inline-block;">前往退房页面</a>
         </section>
       </div>
 

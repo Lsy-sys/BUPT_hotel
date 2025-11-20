@@ -31,6 +31,7 @@
               <th>空调</th>
               <th>队列状态</th>
               <th>操作</th>
+              <th>空调控制</th>
             </tr>
           </thead>
           <tbody id="rooms-body">
@@ -41,15 +42,18 @@
       <section class="card">
         <div class="section-header">
           <h2>调度队列</h2>
-          <button id="btn-refresh-queues" class="btn">刷新</button>
+          <div>
+            <span id="queue-capacity-info" style="margin-right: 15px; color: #666; font-size: 0.9rem;"></span>
+            <button id="btn-refresh-queues" class="btn">刷新</button>
+          </div>
         </div>
         <div class="queues">
           <div>
-            <h3>服务队列</h3>
+            <h3>服务队列 <span id="serving-count" class="queue-count"></span></h3>
             <ul id="serving-list"></ul>
           </div>
           <div>
-            <h3>等待队列</h3>
+            <h3>等待队列 <span id="waiting-count" class="queue-count"></span></h3>
             <ul id="waiting-list"></ul>
           </div>
         </div>

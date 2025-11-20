@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前台 - 办理入住</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='reception.css') }}">
+  </head>
+  <body>
+    <header>
+      <div class="header-content">
+        <h1>办理入住</h1>
+        <div>
+          <a href="/reception" class="btn-back">返回工作台</a>
+          <a href="/" class="btn-back" style="margin-left: 10px;">返回首页</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>办理入住</h2>
+        <form id="checkin-form" class="form">
+          <label>
+            房间号
+            <select id="checkin-room-id" required>
+              <option value="">请选择房间</option>
+            </select>
+          </label>
+          <label>
+            客户姓名 <span class="required">*</span>
+            <input type="text" id="checkin-name" required placeholder="请输入客户姓名">
+          </label>
+          <label>
+            身份证号
+            <input type="text" id="checkin-id-card" placeholder="请输入身份证号">
+          </label>
+          <label>
+            联系电话
+            <input type="text" id="checkin-phone" placeholder="请输入联系电话">
+          </label>
+          <button type="submit" class="btn btn-primary">办理入住</button>
+        </form>
+        <div id="checkin-result" class="result"></div>
+      </section>
+
+      <section class="card">
+        <div class="section-header">
+          <h2>可用房间列表</h2>
+          <button id="btn-refresh-rooms" class="btn">刷新</button>
+        </div>
+        <table id="rooms-table">
+          <thead>
+            <tr>
+              <th>房间号</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="rooms-body">
+          </tbody>
+        </table>
+      </section>
+    </main>
+
+    <div id="toast"></div>
+    <script src="{{ url_for('static', filename='checkin.js') }}" defer></script>
+  </body>
+</html>
+

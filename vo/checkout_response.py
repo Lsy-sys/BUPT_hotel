@@ -24,12 +24,21 @@ class BillResponse:
 
 
 @dataclass
+class CustomerInfo:
+    name: str
+    idCard: str | None
+    phoneNumber: str | None
+
+
+@dataclass
 class CheckoutResponse:
+    customer: CustomerInfo | None = None
     detailBill: List[DetailBill] = field(default_factory=list)
     bill: BillResponse | None = None
 
     def to_dict(self) -> dict:
         return {
+            "customer": self.customer.__dict__ if self.customer else None,
             "detailBill": [detail.__dict__ for detail in self.detailBill],
             "bill": self.bill.__dict__ if self.bill else None,
         }

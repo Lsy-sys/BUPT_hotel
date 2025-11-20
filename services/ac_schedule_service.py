@@ -147,8 +147,33 @@ class ACScheduleService:
             self._move_to_serving(promoted, now)
             self._sort_waiting_queue()
 
-    def _rebalance_queues(self, *, force_rotation: bool = False) -> None:
+    def _enforce_capacity(self) -> None:
+        """强制限制服务队列不超过容量，超出部分移到等待队列"""
+        capacity = self._capacity()
+        now = datetime.utcnow()
+        
+        # 如果服务队列超过容量，将超出部分移到等待队列
+        while len(self.serving_queue) > capacity:
+            # 按优先级（低优先）和服务时间（长优先）排序，优先移除优先级低、服务时间长的
+            # 优先级分数越小，优先级越低，应该优先移除
+            self.serving_queue.sort(
+                key=lambda req: (
+                    self._priority_score(req),  # 优先级分数小的先移除
+                    req.servingTime or now,     # 服务时间长的先移除
+                    req.roomId,
+                )
+            )
+            # 移除优先级最低的（或服务时间最长的）
+            demoted = self.serving_queue.pop(0)
+            self._move_to_waiting(demoted, now)
+        
+        # 如果服务队列未满，从等待队列补充
         self._promote_waiting_room()
+
+    def _rebalance_queues(self, *, force_rotation: bool = False) -> None:
+        # 先强制限制容量
+        self._enforce_capacity()
+        # 然后执行轮转
         self._rotate_time_slice(force=force_rotation)
 
     def startAC(self, room_id: int, current_temp: float | None) -> str:
@@ -159,10 +184,16 @@ class ACScheduleService:
             return "房间空调已开启"
 
         now = datetime.utcnow()
+        # 只有在明确提供了当前温度时才更新，否则保持房间的现有温度
         if current_temp is not None:
             room.current_temp = current_temp
+        # 如果房间当前温度为None，使用默认温度
+        elif room.current_temp is None:
+            room.current_temp = room.default_temp or current_app.config["HOTEL_DEFAULT_TEMP"]
         room.ac_on = True
         room.ac_session_start = now
+        # 初始化温度更新时间
+        room.last_temp_update = now
         room.target_temp = room.target_temp or current_app.config["HOTEL_DEFAULT_TEMP"]
         room.status = "OCCUPIED" if room.status == "AVAILABLE" else room.status
 
@@ -173,7 +204,9 @@ class ACScheduleService:
             targetTemp=room.target_temp,
         )
 
-        if len(self.serving_queue) < self._capacity():
+        # 检查服务队列容量
+        capacity = self._capacity()
+        if len(self.serving_queue) < capacity:
             request.servingTime = now
             self.serving_queue.append(request)
             self._mark_room_serving(room.id, now)
@@ -181,7 +214,9 @@ class ACScheduleService:
             request.waitingTime = now
             self.waiting_queue.append(request)
             self._mark_room_waiting(room.id, now)
-            self._rebalance_queues()
+        
+        # 强制重新平衡队列，确保不超过容量
+        self._rebalance_queues()
 
         self.room_service.updateRoom(room)
         return "空调已开启并进入调度"
@@ -213,10 +248,13 @@ class ACScheduleService:
         room.ac_session_start = None
         room.waiting_start_time = None
         room.serving_start_time = None
+        # 更新温度更新时间，以便温度回归逻辑正常工作
+        room.last_temp_update = now
         self.room_service.updateRoom(room)
 
         self._remove_request(room.id)
-        self._rebalance_queues()
+        # 关机后强制重新平衡队列，确保等待队列中的房间能补充到服务队列
+        self._rebalance_queues(force_rotation=True)
         return "空调已关闭"
 
     def changeTemp(self, room_id: int, target_temp: float) -> str:
@@ -258,10 +296,69 @@ class ACScheduleService:
         total_cost = sum(detail.cost for detail in details)
         return {"totalDuration": total_duration, "totalCost": total_cost}
 
+    def _updateRoomTemperature(self, room) -> None:
+        """更新单个房间的当前温度，根据风速和时间间隔调整变化速度
+        高风: 1度/1分钟
+        中风: 1度/2分钟  
+        低风: 1度/3分钟
+        """
+        now = datetime.utcnow()
+        current_temp = room.current_temp or room.default_temp or 0.0
+        new_temp = current_temp
+        
+        # 计算从上次更新到现在的时间差（分钟）
+        if room.last_temp_update:
+            elapsed_minutes = (now - room.last_temp_update).total_seconds() / 60.0
+        else:
+            # 如果是第一次更新，假设间隔为3秒（前端刷新间隔）
+            elapsed_minutes = 3.0 / 60.0
+        
+        # 根据风速确定温度变化速度（度/分钟）
+        fan_speed = (room.fan_speed or "LOW").upper()
+        if fan_speed == "HIGH":
+            change_rate = 1.0  # 1度/分钟
+        elif fan_speed == "MEDIUM":
+            change_rate = 0.5  # 1度/2分钟 = 0.5度/分钟
+        else:  # LOW
+            change_rate = 1.0 / 3.0  # 1度/3分钟 ≈ 0.333度/分钟
+        
+        if room.ac_on and room.target_temp is not None:
+            diff = room.target_temp - current_temp
+            if abs(diff) < 0.1:
+                new_temp = room.target_temp
+            else:
+                # 根据时间间隔和变化速度计算应该变化的温度
+                max_change = change_rate * elapsed_minutes
+                step = max(min(diff, max_change), -max_change)
+                new_temp = current_temp + step
+        else:
+            if room.default_temp is None:
+                return
+            diff = room.default_temp - current_temp
+            if abs(diff) < 0.1:
+                return
+            # 空调关闭时，温度自然回归，速度较慢（使用50%的速度）
+            natural_rate = change_rate * 0.5
+            max_change = natural_rate * elapsed_minutes
+            step = max(min(diff, max_change), -max_change)
+            new_temp = current_temp + step
+        
+        if abs(new_temp - current_temp) >= 1e-6:
+            room.current_temp = round(new_temp, 2)
+            room.last_temp_update = now
+            self.room_service.updateRoom(room)
+
     def getRoomACStatus(self, room_id: int) -> dict:
+        # 在获取状态前，确保队列状态正确
+        self._enforce_capacity()
+        
         room = self.room_service.getRoomById(room_id)
         if room is None:
             raise ValueError("房间不存在")
+        
+        # 自动更新当前温度
+        self._updateRoomTemperature(room)
+        
         status = room.to_dict()
         now = datetime.utcnow()
         queue_state = "IDLE"
@@ -291,6 +388,8 @@ class ACScheduleService:
         return status
 
     def getScheduleStatus(self) -> dict:
+        # 在返回状态前，强制限制服务队列不超过容量
+        self._enforce_capacity()
         now = datetime.utcnow()
 
         def _to_payload(queue: List[RoomRequest]) -> List[Dict[str, object]]:
@@ -319,17 +418,42 @@ class ACScheduleService:
         return self.getScheduleStatus()
 
     def simulateTemperatureUpdate(self) -> dict:
+        """批量更新所有房间的温度，根据风速和时间间隔调整变化速度
+        高风: 1度/1分钟
+        中风: 1度/2分钟  
+        低风: 1度/3分钟
+        """
+        now = datetime.utcnow()
         rooms = self.room_service.getAllRooms()
         updated = 0
         for room in rooms:
             current_temp = room.current_temp or room.default_temp or 0.0
             new_temp = current_temp
+            
+            # 计算从上次更新到现在的时间差（分钟）
+            if room.last_temp_update:
+                elapsed_minutes = (now - room.last_temp_update).total_seconds() / 60.0
+            else:
+                # 如果是第一次更新，假设间隔为1分钟
+                elapsed_minutes = 1.0
+            
+            # 根据风速确定温度变化速度（度/分钟）
+            fan_speed = (room.fan_speed or "LOW").upper()
+            if fan_speed == "HIGH":
+                change_rate = 1.0  # 1度/分钟
+            elif fan_speed == "MEDIUM":
+                change_rate = 0.5  # 1度/2分钟 = 0.5度/分钟
+            else:  # LOW
+                change_rate = 1.0 / 3.0  # 1度/3分钟 ≈ 0.333度/分钟
+            
             if room.ac_on and room.target_temp is not None:
                 diff = room.target_temp - current_temp
                 if abs(diff) < 0.1:
                     new_temp = room.target_temp
                 else:
-                    step = max(min(diff, 0.5), -0.5)
+                    # 根据时间间隔和变化速度计算应该变化的温度
+                    max_change = change_rate * elapsed_minutes
+                    step = max(min(diff, max_change), -max_change)
                     new_temp = current_temp + step
             else:
                 if room.default_temp is None:
@@ -337,11 +461,15 @@ class ACScheduleService:
                 diff = room.default_temp - current_temp
                 if abs(diff) < 0.1:
                     continue
-                step = max(min(diff, 0.3), -0.3)
+                # 空调关闭时，温度自然回归，速度较慢（使用50%的速度）
+                natural_rate = change_rate * 0.5
+                max_change = natural_rate * elapsed_minutes
+                step = max(min(diff, max_change), -max_change)
                 new_temp = current_temp + step
             if abs(new_temp - current_temp) < 1e-6:
                 continue
             room.current_temp = round(new_temp, 2)
+            room.last_temp_update = now
             self.room_service.updateRoom(room)
             updated += 1
         return {"message": "温度已模拟更新", "updatedRooms": updated}
