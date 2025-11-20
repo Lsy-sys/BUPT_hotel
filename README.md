@@ -43,15 +43,15 @@ hotel/
 
 ### 环境配置
 
-| 变量 | 默认值 | 说明 |
-| --- | --- | --- |
-| `DATABASE_URL` | `mysql+pymysql://root:abc123456@localhost:3306/hotel_ac_db?charset=utf8mb4` | MySQL 连接串 |
-| `HOTEL_AC_TOTAL_COUNT` | `3` | 可同时服务的空调实例数 |
-| `HOTEL_ROOM_COUNT` | `5` | 自动初始化的房间数量 |
-| `HOTEL_DEFAULT_TEMP` | `25` | 入住默认室温 |
-| `HOTEL_TIME_SLICE` | `120` | 调度轮转时间片（秒） |
-| `BILLING_ROOM_RATE` | `100` | 住宿费（元/天） |
-| `BILLING_AC_RATE_LOW/MEDIUM/HIGH` | `0.5 / 1.0 / 1.5` | 按风速计费（元/分钟） |
+| 变量 | 默认值                                                                            | 说明 |
+| --- |--------------------------------------------------------------------------------| --- |
+| `DATABASE_URL` | `mysql+pymysql://root:yourpassword@localhost:3306/hotel_ac_db?charset=utf8mb4` | MySQL 连接串 |
+| `HOTEL_AC_TOTAL_COUNT` | `3`                                                                            | 可同时服务的空调实例数 |
+| `HOTEL_ROOM_COUNT` | `5`                                                                            | 自动初始化的房间数量 |
+| `HOTEL_DEFAULT_TEMP` | `25`                                                                           | 入住默认室温 |
+| `HOTEL_TIME_SLICE` | `120`                                                                          | 调度轮转时间片（秒） |
+| `BILLING_ROOM_RATE` | `100`                                                                          | 住宿费（元/天） |
+| `BILLING_AC_RATE_LOW/MEDIUM/HIGH` | `0.5 / 1.0 / 1.5`                                                              | 按风速计费（元/分钟） |
 
 ---
 
