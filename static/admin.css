@@ -161,6 +161,63 @@ th {
   font-weight: normal;
 }
 
+.schedule-strategy {
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.schedule-strategy details {
+  cursor: pointer;
+}
+
+.schedule-strategy summary {
+  font-weight: 600;
+  color: #1c64f2;
+  padding: 8px 0;
+  user-select: none;
+  font-size: 1.05rem;
+}
+
+.schedule-strategy summary:hover {
+  color: #1557d0;
+}
+
+.schedule-strategy summary::marker {
+  color: #1c64f2;
+}
+
+.strategy-content {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.strategy-content h4 {
+  margin: 15px 0 10px 0;
+  color: #333;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.strategy-content ul {
+  margin-left: 20px;
+  margin-bottom: 15px;
+  line-height: 1.8;
+}
+
+.strategy-content li {
+  margin-bottom: 8px;
+  color: #555;
+}
+
+.strategy-content strong {
+  color: #333;
+  font-weight: 600;
+}
+
 .ac-controls {
   display: flex;
   gap: 5px;

@@ -67,6 +67,25 @@ class ACScheduleService:
     def _remove_request(self, room_id: int) -> None:
         self._remove_from_queue(self.serving_queue, room_id)
         self._remove_from_queue(self.waiting_queue, room_id)
+    
+    def _deduplicate_queues(self) -> None:
+        """清理队列中的重复房间，每个房间只保留一个实例（保留第一个）"""
+        seen_room_ids = set()
+        # 清理服务队列
+        new_serving = []
+        for req in self.serving_queue:
+            if req.roomId not in seen_room_ids:
+                seen_room_ids.add(req.roomId)
+                new_serving.append(req)
+        self.serving_queue = new_serving
+        
+        # 清理等待队列
+        new_waiting = []
+        for req in self.waiting_queue:
+            if req.roomId not in seen_room_ids:
+                seen_room_ids.add(req.roomId)
+                new_waiting.append(req)
+        self.waiting_queue = new_waiting
 
     def _sort_waiting_queue(self) -> None:
         if not self.waiting_queue:
@@ -275,16 +294,48 @@ class ACScheduleService:
         room = self.room_service.getRoomById(room_id)
         if room is None:
             raise ValueError("房间不存在")
+        if not room.ac_on:
+            raise ValueError("请先开启空调")
         normalized = fan_speed.upper()
         if normalized not in {"LOW", "MEDIUM", "HIGH"}:
             raise ValueError("无效风速")
         room.fan_speed = normalized
         self.room_service.updateRoom(room)
 
-        for queue in (self.serving_queue, self.waiting_queue):
-            for req in queue:
-                if req.roomId == room_id:
-                    req.fanSpeed = normalized
+        # 先移除队列中该房间的所有实例（防止重复）
+        self._remove_request(room_id)
+        
+        # 如果空调是开启的，重新加入队列
+        now = datetime.utcnow()
+        request = RoomRequest(
+            roomId=room.id,
+            fanSpeed=normalized,
+            mode=room.ac_mode,
+            targetTemp=room.target_temp,
+        )
+        
+        # 根据房间的serving_start_time和waiting_start_time判断应该加入哪个队列
+        capacity = self._capacity()
+        if room.serving_start_time:
+            # 如果房间有serving_start_time，说明应该在服务队列
+            request.servingTime = room.serving_start_time
+            self.serving_queue.append(request)
+        elif room.waiting_start_time:
+            # 如果房间有waiting_start_time，说明应该在等待队列
+            request.waitingTime = room.waiting_start_time
+            self.waiting_queue.append(request)
+        else:
+            # 如果都没有，根据当前容量决定
+            if len(self.serving_queue) < capacity:
+                request.servingTime = room.ac_session_start or now
+                self.serving_queue.append(request)
+                self._mark_room_serving(room.id, request.servingTime)
+            else:
+                request.waitingTime = room.ac_session_start or now
+                self.waiting_queue.append(request)
+                self._mark_room_waiting(room.id, request.waitingTime)
+        
+        # 重新平衡队列（会重新排序，确保优先级正确）
         self._rebalance_queues(force_rotation=True)
         return "风速已更新"
 
@@ -349,6 +400,8 @@ class ACScheduleService:
             self.room_service.updateRoom(room)
 
     def getRoomACStatus(self, room_id: int) -> dict:
+        # 先从数据库恢复队列状态（如果服务重启后队列丢失）
+        self._restore_queue_from_database()
         # 在获取状态前，确保队列状态正确
         self._enforce_capacity()
         
@@ -387,7 +440,73 @@ class ACScheduleService:
         )
         return status
 
+    def _restore_queue_from_database(self) -> None:
+        """从数据库恢复队列状态，用于服务重启后恢复队列"""
+        # 先清理重复的房间
+        self._deduplicate_queues()
+        
+        # 获取所有正在使用空调的房间ID
+        ac_on_room_ids = {room.id for room in Room.query.filter_by(ac_on=True).all()}
+        now = datetime.utcnow()
+        
+        # 清理队列中已关闭空调的房间
+        self.serving_queue = [req for req in self.serving_queue if req.roomId in ac_on_room_ids]
+        self.waiting_queue = [req for req in self.waiting_queue if req.roomId in ac_on_room_ids]
+        
+        # 获取当前队列中已有的房间ID
+        existing_room_ids = set()
+        for req in self.serving_queue:
+            existing_room_ids.add(req.roomId)
+        for req in self.waiting_queue:
+            existing_room_ids.add(req.roomId)
+        
+        # 对于每个ac_on=True的房间，如果不在队列中，则恢复
+        for room_id in ac_on_room_ids:
+            if room_id in existing_room_ids:
+                continue  # 已经在队列中，跳过
+            
+            room = self.room_service.getRoomById(room_id)
+            if not room:
+                continue
+            
+            # 创建RoomRequest
+            request = RoomRequest(
+                roomId=room.id,
+                fanSpeed=room.fan_speed or "LOW",
+                mode=room.ac_mode or "COOLING",
+                targetTemp=room.target_temp,
+            )
+            
+            # 根据房间的serving_start_time和waiting_start_time判断应该加入哪个队列
+            if room.serving_start_time:
+                # 如果房间有serving_start_time，说明应该在服务队列
+                request.servingTime = room.serving_start_time
+                self.serving_queue.append(request)
+            elif room.waiting_start_time:
+                # 如果房间有waiting_start_time，说明应该在等待队列
+                request.waitingTime = room.waiting_start_time
+                self.waiting_queue.append(request)
+            else:
+                # 如果都没有，根据当前容量决定
+                capacity = self._capacity()
+                if len(self.serving_queue) < capacity:
+                    request.servingTime = room.ac_session_start or now
+                    self.serving_queue.append(request)
+                    self._mark_room_serving(room.id, request.servingTime)
+                else:
+                    request.waitingTime = room.ac_session_start or now
+                    self.waiting_queue.append(request)
+                    self._mark_room_waiting(room.id, request.waitingTime)
+        
+        # 恢复后重新排序和平衡队列
+        self._sort_waiting_queue()
+        self._rebalance_queues()
+
     def getScheduleStatus(self) -> dict:
+        # 先从数据库恢复队列状态（如果服务重启后队列丢失）
+        self._restore_queue_from_database()
+        # 清理重复的房间
+        self._deduplicate_queues()
         # 在返回状态前，强制限制服务队列不超过容量
         self._enforce_capacity()
         now = datetime.utcnow()
@@ -409,6 +528,7 @@ class ACScheduleService:
 
         return {
             "capacity": self._capacity(),
+            "timeSlice": self._time_slice(),
             "servingQueue": _to_payload(self.serving_queue),
             "waitingQueue": _to_payload(self.waiting_queue),
         }

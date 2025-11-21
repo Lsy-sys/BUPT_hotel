@@ -32,15 +32,15 @@ async function loadRooms() {
       } else if (room.roomStatus === 'MAINTENANCE') {
         actionButtons = `<button class="btn btn-primary btn-sm" onclick="bringRoomOnline(${room.roomId})">恢复可用</button>`;
       } else if (room.roomStatus === 'OCCUPIED') {
-        // 已入住房间也可以标记为维修（紧急情况）
-        actionButtons = `<button class="btn btn-danger btn-sm" onclick="takeRoomOffline(${room.roomId})">标记维修</button>`;
+        // 已入住房间不能标记为维修，必须先退房
+        actionButtons = '<span style="color: #999;" title="已入住房间不能标记为维修，请先办理退房">--</span>';
       } else {
         actionButtons = '<span style="color: #999;">--</span>';
       }
       
-      // 空调控制按钮
+      // 空调控制按钮（已入住或空闲房间都可以操作）
       let acControls = '';
-      if (room.roomStatus === 'OCCUPIED') {
+      if (room.roomStatus === 'OCCUPIED' || room.roomStatus === 'AVAILABLE') {
         if (room.acOn) {
           acControls = `
             <div class="ac-controls">
@@ -93,12 +93,23 @@ async function loadQueues() {
     waitingList.innerHTML = '';
     
     const capacity = data.capacity || 0;
+    const timeSlice = data.timeSlice || 120;
     const servingCountNum = data.servingQueue?.length || 0;
     const waitingCountNum = data.waitingQueue?.length || 0;
     
     capacityInfo.textContent = `容量：${servingCountNum}/${capacity}`;
     servingCount.textContent = `(${servingCountNum})`;
     waitingCount.textContent = `(${waitingCountNum})`;
+    
+    // 更新调度策略说明中的动态数值
+    const strategyCapacityElements = document.querySelectorAll('#strategy-capacity, #strategy-capacity-2');
+    strategyCapacityElements.forEach(el => {
+      if (el) el.textContent = capacity;
+    });
+    const strategyTimeSliceElement = document.getElementById('strategy-time-slice');
+    if (strategyTimeSliceElement) {
+      strategyTimeSliceElement.textContent = timeSlice;
+    }
     
     if (data.servingQueue && data.servingQueue.length > 0) {
       data.servingQueue.forEach(item => {

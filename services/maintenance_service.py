@@ -18,6 +18,9 @@ class MaintenanceService:
         room = self.room_service.getRoomById(room_id)
         if room is None:
             raise ValueError("房间不存在")
+        # 已入住房间不能标记为维修，必须先退房
+        if room.status == "OCCUPIED":
+            raise ValueError("已入住房间不能标记为维修，请先办理退房")
         if room.ac_on:
             self.ac_schedule_service.stopAC(room_id)
         room.status = "MAINTENANCE"

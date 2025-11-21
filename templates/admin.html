@@ -47,6 +47,45 @@
             <button id="btn-refresh-queues" class="btn">刷新</button>
           </div>
         </div>
+        
+        <div class="schedule-strategy">
+          <details>
+            <summary>调度策略说明</summary>
+            <div class="strategy-content">
+              <h4>核心机制</h4>
+              <ul>
+                <li><strong>容量限制：</strong>系统最多同时运行 <span id="strategy-capacity">3</span> 台空调，超出部分自动进入等待队列</li>
+                <li><strong>优先级调度：</strong>根据风速设置优先级，高风 > 中风 > 低风</li>
+                <li><strong>时间片轮转：</strong>每 <span id="strategy-time-slice">120</span> 秒自动轮转一次，确保公平调度</li>
+              </ul>
+              
+              <h4>队列管理</h4>
+              <ul>
+                <li><strong>服务队列：</strong>正在运行的空调，最多 <span id="strategy-capacity-2">3</span> 台</li>
+                <li><strong>等待队列：</strong>等待运行的空调，按优先级排序</li>
+                <li><strong>自动补位：</strong>当服务队列有空位时，自动从等待队列中按优先级补充</li>
+                <li><strong>容量强制：</strong>如果服务队列超过容量，自动将低优先级房间移至等待队列</li>
+              </ul>
+              
+              <h4>温度变化规则</h4>
+              <ul>
+                <li><strong>高风速：</strong>1度/1分钟</li>
+                <li><strong>中风速：</strong>1度/2分钟</li>
+                <li><strong>低风速：</strong>1度/3分钟</li>
+                <li><strong>空调关闭：</strong>温度自然回归到默认温度，变化速度为开启时的50%</li>
+              </ul>
+              
+              <h4>操作行为</h4>
+              <ul>
+                <li><strong>开机：</strong>服务队列有空位 → 直接进入服务队列；无空位 → 进入等待队列</li>
+                <li><strong>关机：</strong>从队列中移除，自动检查等待队列并补充</li>
+                <li><strong>改风速：</strong>重新计算优先级，可能触发队列重新排序</li>
+                <li><strong>改温度：</strong>不影响队列状态，仅更新目标温度</li>
+              </ul>
+            </div>
+          </details>
+        </div>
+        
         <div class="queues">
           <div>
             <h3>服务队列 <span id="serving-count" class="queue-count"></span></h3>

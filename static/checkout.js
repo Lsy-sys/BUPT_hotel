@@ -100,6 +100,12 @@ document.getElementById('checkout-form').addEventListener('submit', async (e) =>
     return;
   }
   
+  // 确认对话框，防止误触
+  const confirmMessage = `确认要办理房间 ${roomId} 的退房手续吗？\n\n退房后将：\n- 生成账单\n- 清空房间状态\n- 房间恢复为空闲状态`;
+  if (!confirm(confirmMessage)) {
+    return; // 用户取消
+  }
+  
   try {
     const res = await fetch(`${API_BASE}/hotel/checkout/${roomId}`, {
       method: 'POST'
@@ -135,6 +141,12 @@ document.getElementById('btn-refresh-rooms').addEventListener('click', () => {
 });
 
 window.checkoutRoom = async function(roomId) {
+  // 确认对话框，防止误触
+  const confirmMessage = `确认要办理房间 ${roomId} 的退房手续吗？\n\n退房后将：\n- 生成账单\n- 清空房间状态\n- 房间恢复为空闲状态`;
+  if (!confirm(confirmMessage)) {
+    return; // 用户取消
+  }
+  
   document.getElementById('checkout-room-id').value = roomId;
   document.getElementById('checkout-form').dispatchEvent(new Event('submit'));
 };
