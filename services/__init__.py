@@ -1,25 +1,25 @@
-from .ac_schedule_service import ACScheduleService
-from .ac_service import ACService
+from .ac_service import AC
 from .bill_detail_service import BillDetailService
-from .bill_service import BillService
+from .bill_service import AccommodationFeeBillService
 from .customer_service import CustomerService
-from .hotel_service import HotelService
+from .hotel_service import FrontDesk
 from .maintenance_service import MaintenanceService
 from .report_service import ReportService
 from .room_service import RoomService
+from .scheduler import Scheduler
 
 room_service = RoomService()
 customer_service = CustomerService()
 bill_detail_service = BillDetailService()
-bill_service = BillService()
-ac_schedule_service = ACScheduleService(room_service, bill_detail_service)
-ac_service = ACService(room_service)
-maintenance_service = MaintenanceService(room_service, ac_schedule_service)
+accommodation_fee_bill_service = AccommodationFeeBillService()
+scheduler = Scheduler(room_service, bill_detail_service)
+ac = AC(room_service, scheduler)
+maintenance_service = MaintenanceService(room_service, scheduler)
 report_service = ReportService()
-hotel_service = HotelService(
+front_desk = FrontDesk(
     room_service=room_service,
     customer_service=customer_service,
-    bill_service=bill_service,
+    accommodation_fee_bill_service=accommodation_fee_bill_service,
     bill_detail_service=bill_detail_service,
 )
 

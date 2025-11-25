@@ -4,13 +4,13 @@ from typing import Dict, List, Optional
 from flask import current_app
 
 from ..extensions import db
-from ..models import Bill, BillDetail, Customer, Room
+from ..models import ACFeeBill, AccommodationFeeBill, Customer, DetailRecord, Room
 
 
-class BillService:
+class AccommodationFeeBillService:
     def createAndSettleBill(
-        self, bill_details: List[BillDetail], customer: Customer, room: Room
-    ) -> Bill:
+        self, bill_details: List[DetailRecord], customer: Customer, room: Room
+    ) -> AccommodationFeeBill:
         if not customer.check_in_time:
             customer.check_in_time = datetime.utcnow()
         if not customer.check_out_time:
@@ -19,10 +19,12 @@ class BillService:
         stay_days = max(
             1, (customer.check_out_time.date() - customer.check_in_time.date()).days or 1
         )
-        room_fee = stay_days * current_app.config["BILLING_ROOM_RATE"]
-        ac_fee = sum(detail.cost for detail in bill_details)
+        room_fee = AccommodationFeeBill.calculate_Accommodation_Fee(
+            stay_days, current_app.config["BILLING_ROOM_RATE"]
+        )
+        ac_fee = ACFeeBill(room_id=room.id, detail_records=bill_details).calculate_AC_Fee()
 
-        bill = Bill(
+        bill = AccommodationFeeBill(
             room_id=room.id,
             customer_id=customer.id,
             check_in_time=customer.check_in_time,
@@ -37,34 +39,34 @@ class BillService:
         db.session.commit()
         return bill
 
-    def getAllBills(self) -> List[Bill]:
-        return Bill.query.order_by(Bill.create_time.desc()).all()
+    def getAllBills(self) -> List[AccommodationFeeBill]:
+        return AccommodationFeeBill.query.order_by(AccommodationFeeBill.create_time.desc()).all()
 
-    def getBillById(self, bill_id: int) -> Optional[Bill]:
-        return Bill.query.get(bill_id)
+    def getBillById(self, bill_id: int) -> Optional[AccommodationFeeBill]:
+        return AccommodationFeeBill.query.get(bill_id)
 
-    def getBillsByRoomId(self, room_id: int) -> List[Bill]:
+    def getBillsByRoomId(self, room_id: int) -> List[AccommodationFeeBill]:
         return (
-            Bill.query.filter_by(room_id=room_id)
-            .order_by(Bill.create_time.desc())
+            AccommodationFeeBill.query.filter_by(room_id=room_id)
+            .order_by(AccommodationFeeBill.create_time.desc())
             .all()
         )
 
-    def getBillsByCustomerId(self, customer_id: int) -> List[Bill]:
+    def getBillsByCustomerId(self, customer_id: int) -> List[AccommodationFeeBill]:
         return (
-            Bill.query.filter_by(customer_id=customer_id)
-            .order_by(Bill.create_time.desc())
+            AccommodationFeeBill.query.filter_by(customer_id=customer_id)
+            .order_by(AccommodationFeeBill.create_time.desc())
             .all()
         )
 
-    def getUnpaidBills(self) -> List[Bill]:
+    def getUnpaidBills(self) -> List[AccommodationFeeBill]:
         return (
-            Bill.query.filter_by(status="UNPAID")
-            .order_by(Bill.create_time.desc())
+            AccommodationFeeBill.query.filter_by(status="UNPAID")
+            .order_by(AccommodationFeeBill.create_time.desc())
             .all()
         )
 
-    def markBillPaid(self, bill_id: int) -> Bill:
+    def markBillPaid(self, bill_id: int) -> AccommodationFeeBill:
         bill = self.getBillById(bill_id)
         if bill is None:
             raise ValueError("账单不存在")
@@ -78,7 +80,7 @@ class BillService:
         db.session.commit()
         return bill
 
-    def cancelBill(self, bill_id: int) -> Bill:
+    def cancelBill(self, bill_id: int) -> AccommodationFeeBill:
         bill = self.getBillById(bill_id)
         if bill is None:
             raise ValueError("账单不存在")
@@ -92,7 +94,7 @@ class BillService:
         db.session.commit()
         return bill
 
-    def markBillPrinted(self, bill_id: int) -> Bill:
+    def markBillPrinted(self, bill_id: int) -> AccommodationFeeBill:
         bill = self.getBillById(bill_id)
         if bill is None:
             raise ValueError("账单不存在")
@@ -103,7 +105,7 @@ class BillService:
         return bill
 
     def buildPrintablePayload(
-        self, bill: Bill, details: List[BillDetail]
+        self, bill: AccommodationFeeBill, details: List[DetailRecord]
     ) -> Dict[str, object]:
         return {
             "bill": bill.to_dict(),

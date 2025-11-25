@@ -17,6 +17,9 @@ class CustomerService:
         db.session.commit()
         return customer
 
+    def getCustomerById(self, customer_id: int) -> Optional[Customer]:
+        return Customer.query.get(customer_id)
+
     def getCustomerByRoomId(self, room_id: int) -> Optional[Customer]:
         return Customer.query.filter_by(current_room_id=room_id, status="CHECKED_IN").first()
 

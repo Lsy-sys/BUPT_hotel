@@ -1,19 +1,19 @@
 from flask import Blueprint, jsonify, request
 
-from ..services import ac_schedule_service, room_service
+from ..services import room_service, scheduler
 
 test_bp = Blueprint("test", __name__, url_prefix="/api/test")
 
 
 @test_bp.post("/time-slice-check")
 def trigger_time_slice_check():
-    status = ac_schedule_service.forceTimeSliceCheck()
+    status = scheduler.forceTimeSliceCheck()
     return jsonify({"message": "时间片检查已执行", "schedule": status})
 
 
 @test_bp.post("/temperature-update")
 def trigger_temperature_update():
-    result = ac_schedule_service.simulateTemperatureUpdate()
+    result = scheduler.simulateTemperatureUpdate()
     return jsonify(result)
 
 

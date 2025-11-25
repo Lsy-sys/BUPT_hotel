@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify
 
-from ..services import ac_schedule_service, ac_service, room_service
+from ..services import ac, room_service, scheduler
 
 monitor_bp = Blueprint("monitor", __name__, url_prefix="/api/monitor")
 
@@ -12,12 +12,12 @@ def getRoomStatus():
     rooms = room_service.getAllRooms()
     result = []
     for room in rooms:
-        ac = ac_service.getACByRoomId(room.id)
+        ac_state = ac.getACByRoomId(room.id)
         customer = customer_service.getCustomerByRoomId(room.id) if room.status == "OCCUPIED" else None
         
         # 获取队列状态信息
         try:
-            ac_status = ac_schedule_service.getRoomACStatus(room.id)
+            ac_status = scheduler.RequestState(room.id)
             queue_state = ac_status.get("queueState", "IDLE")
         except:
             queue_state = "IDLE"
@@ -27,10 +27,10 @@ def getRoomStatus():
             "roomStatus": room.status,
             "currentTemp": room.current_temp,
             "defaultTemp": room.default_temp,
-            "targetTemp": ac.target_temp if ac else None,
-            "fanSpeed": ac.fan_speed if ac else None,
-            "mode": ac.ac_mode if ac else None,
-            "acOn": ac.ac_on if ac else False,
+            "targetTemp": ac_state.target_temp if ac_state else None,
+            "fanSpeed": ac_state.fan_speed if ac_state else None,
+            "mode": ac_state.ac_mode if ac_state else None,
+            "acOn": ac_state.ac_on if ac_state else False,
             "queueState": queue_state,
             "customerName": customer.name if customer else (room.customer_name if room.status == "OCCUPIED" else None),
             "customerIdCard": customer.id_card if customer else None,
@@ -56,7 +56,7 @@ def getQueueStatus():
             if req.servingTime
             else 0,
         }
-        for req in ac_schedule_service.getServingQueue()
+        for req in scheduler.getServingQueue()
     ]
     waiting = [
         {
@@ -67,7 +67,7 @@ def getQueueStatus():
             if req.waitingTime
             else 0,
         }
-        for req in ac_schedule_service.getWaitingQueue()
+        for req in scheduler.getWaitingQueue()
     ]
     return jsonify({"servingQueue": serving, "waitingQueue": waiting})
 

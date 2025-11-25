@@ -10,7 +10,7 @@ from .bill_detail_service import BillDetailService
 from .room_service import RoomService
 
 
-class ACScheduleService:
+class Scheduler:
     def __init__(self, room_service: RoomService, bill_detail_service: BillDetailService):
         self.room_service = room_service
         self.bill_detail_service = bill_detail_service
@@ -195,7 +195,9 @@ class ACScheduleService:
         # 然后执行轮转
         self._rotate_time_slice(force=force_rotation)
 
-    def startAC(self, room_id: int, current_temp: float | None) -> str:
+    def PowerOn(self, RoomId: int, CurrentRoomTemp: float | None) -> str:
+        room_id = RoomId
+        current_temp = CurrentRoomTemp
         room = self.room_service.getRoomById(room_id)
         if room is None:
             raise ValueError("房间不存在")
@@ -241,7 +243,8 @@ class ACScheduleService:
         self.room_service.updateRoom(room)
         return "空调已开启并进入调度"
 
-    def stopAC(self, room_id: int) -> str:
+    def PowerOff(self, RoomId: int) -> str:
+        room_id = RoomId
         room = self.room_service.getRoomById(room_id)
         if room is None:
             raise ValueError("房间不存在")
@@ -286,7 +289,9 @@ class ACScheduleService:
         self._rebalance_queues(force_rotation=True)
         return "空调已关闭"
 
-    def changeTemp(self, room_id: int, target_temp: float) -> str:
+    def ChangeTemp(self, RoomId: int, TargetTemp: float) -> str:
+        room_id = RoomId
+        target_temp = TargetTemp
         room = self.room_service.getRoomById(room_id)
         if room is None:
             raise ValueError("房间不存在")
@@ -300,7 +305,9 @@ class ACScheduleService:
                     req.targetTemp = target_temp
         return "目标温度已更新"
 
-    def changeFanSpeed(self, room_id: int, fan_speed: str) -> str:
+    def ChangeSpeed(self, RoomId: int, FanSpeed: str) -> str:
+        room_id = RoomId
+        fan_speed = FanSpeed
         room = self.room_service.getRoomById(room_id)
         if room is None:
             raise ValueError("房间不存在")
@@ -350,9 +357,9 @@ class ACScheduleService:
         return "风速已更新"
 
     def getRoomACAccumulatedData(self, room_id: int) -> dict:
-        from ..models import BillDetail
+        from ..models import DetailRecord
 
-        details = BillDetail.query.filter_by(room_id=room_id).all()
+        details = DetailRecord.query.filter_by(room_id=room_id).all()
         total_duration = sum(detail.duration for detail in details)
         total_cost = sum(detail.cost for detail in details)
         return {"totalDuration": total_duration, "totalCost": total_cost}
@@ -409,7 +416,8 @@ class ACScheduleService:
             room.last_temp_update = now
             self.room_service.updateRoom(room)
 
-    def getRoomACStatus(self, room_id: int) -> dict:
+    def RequestState(self, RoomId: int) -> dict:
+        room_id = RoomId
         # 先从数据库恢复队列状态（如果服务重启后队列丢失）
         self._restore_queue_from_database()
         # 在获取状态前，确保队列状态正确

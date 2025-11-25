@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 from flask import current_app
 
-from ..models import Bill, BillDetail, Room
+from ..models import AccommodationFeeBill, DetailRecord, Room
 
 
 class ReportService:
@@ -32,9 +32,9 @@ class ReportService:
         occupied_rooms = Room.query.filter_by(status="OCCUPIED").count()
         maintenance_rooms = Room.query.filter_by(status="MAINTENANCE").count()
 
-        bill_query = Bill.query
+        bill_query = AccommodationFeeBill.query
         bill_query = self._build_time_filters(bill_query, start, end)
-        bills: List[Bill] = bill_query.all()
+        bills: List[AccommodationFeeBill] = bill_query.all()
 
         room_revenue = sum(bill.room_fee for bill in bills)
         ac_revenue = sum(bill.ac_total_fee for bill in bills)
@@ -63,15 +63,15 @@ class ReportService:
     def get_ac_usage_summary(
         self, start: Optional[str], end: Optional[str]
     ) -> Dict[str, object]:
-        detail_query = BillDetail.query
+        detail_query = DetailRecord.query
         start_dt = self._parse_datetime(start)
         end_dt = self._parse_datetime(end)
         if start_dt:
-            detail_query = detail_query.filter(BillDetail.start_time >= start_dt)
+            detail_query = detail_query.filter(DetailRecord.start_time >= start_dt)
         if end_dt:
-            detail_query = detail_query.filter(BillDetail.end_time <= end_dt)
+            detail_query = detail_query.filter(DetailRecord.end_time <= end_dt)
 
-        details: List[BillDetail] = detail_query.all()
+        details: List[DetailRecord] = detail_query.all()
         grouped_duration: Dict[str, int] = defaultdict(int)
         grouped_cost: Dict[str, float] = defaultdict(float)
         for detail in details:
@@ -99,9 +99,13 @@ class ReportService:
             raise ValueError("days 必须大于 0")
 
         rows: List[tuple] = (
-            Bill.query.with_entities(Bill.check_out_time, Bill.room_fee, Bill.ac_total_fee)
-            .filter(Bill.check_out_time != None)  # noqa: E711
-            .order_by(Bill.check_out_time.desc())
+            AccommodationFeeBill.query.with_entities(
+                AccommodationFeeBill.check_out_time,
+                AccommodationFeeBill.room_fee,
+                AccommodationFeeBill.ac_total_fee,
+            )
+            .filter(AccommodationFeeBill.check_out_time != None)  # noqa: E711
+            .order_by(AccommodationFeeBill.check_out_time.desc())
             .limit(days * current_app.config.get("HOTEL_ROOM_COUNT", 5))
             .all()
         )

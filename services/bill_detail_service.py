@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List
 
 from ..extensions import db
-from ..models import BillDetail
+from ..models import DetailRecord
 
 
 class BillDetailService:
@@ -16,8 +16,8 @@ class BillDetailService:
         rate: float,
         cost: float,
         customer_id: int | None = None,
-    ) -> BillDetail:
-        detail = BillDetail(
+    ) -> DetailRecord:
+        detail = DetailRecord(
             room_id=room_id,
             customer_id=customer_id,
             ac_mode=ac_mode,
@@ -35,14 +35,14 @@ class BillDetailService:
 
     def getBillDetailsByRoomIdAndTimeRange(
         self, room_id: int, start: datetime, end: datetime, customer_id: int | None = None
-    ) -> List[BillDetail]:
-        query = BillDetail.query.filter(
-            BillDetail.room_id == room_id,
-            BillDetail.start_time >= start,
-            BillDetail.end_time <= end,
+    ) -> List[DetailRecord]:
+        query = DetailRecord.query.filter(
+            DetailRecord.room_id == room_id,
+            DetailRecord.start_time >= start,
+            DetailRecord.end_time <= end,
         )
         # 如果提供了customer_id，只返回该客户的账单详情（排除管理员开启的空调产生的账单）
         if customer_id is not None:
-            query = query.filter(BillDetail.customer_id == customer_id)
-        return query.order_by(BillDetail.start_time).all()
+            query = query.filter(DetailRecord.customer_id == customer_id)
+        return query.order_by(DetailRecord.start_time).all()
 

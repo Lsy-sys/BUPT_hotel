@@ -4,15 +4,15 @@ from datetime import datetime
 
 from ..models import Room
 from .room_service import RoomService
-from .ac_schedule_service import ACScheduleService
+from .scheduler import Scheduler
 
 
 class MaintenanceService:
     def __init__(
-        self, room_service: RoomService, ac_schedule_service: ACScheduleService
+        self, room_service: RoomService, scheduler: Scheduler
     ):
         self.room_service = room_service
-        self.ac_schedule_service = ac_schedule_service
+        self.scheduler = scheduler
 
     def mark_room_offline(self, room_id: int) -> Room:
         room = self.room_service.getRoomById(room_id)
@@ -22,7 +22,7 @@ class MaintenanceService:
         if room.status == "OCCUPIED":
             raise ValueError("已入住房间不能标记为维修，请先办理退房")
         if room.ac_on:
-            self.ac_schedule_service.stopAC(room_id)
+            self.scheduler.PowerOff(room_id)
         room.status = "MAINTENANCE"
         room.customer_name = None
         room.current_temp = room.default_temp
@@ -47,8 +47,8 @@ class MaintenanceService:
         return self.room_service.updateRoom(room)
 
     def force_rebalance(self) -> dict:
-        return self.ac_schedule_service.forceTimeSliceCheck()
+        return self.scheduler.forceTimeSliceCheck()
 
     def simulate_temperature(self) -> dict:
-        return self.ac_schedule_service.simulateTemperatureUpdate()
+        return self.scheduler.simulateTemperatureUpdate()
 

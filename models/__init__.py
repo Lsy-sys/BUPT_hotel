@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from ..extensions import db
 
@@ -45,6 +45,18 @@ class Room(db.Model, TimestampMixin):
             "defaultTemp": self.default_temp,
         }
 
+    def updateState(self, state: str) -> None:
+        self.status = state
+
+    def setAccommodationDays(self, days: int) -> None:
+        self.check_in_days = days
+
+    def associateDetailRecords(self, records: List["DetailRecord"]) -> None:
+        self._detail_records = records  # type: ignore[attr-defined]
+
+    def associateCustomer(self, customer: "Customer") -> None:
+        self.customer_name = customer.name
+
 
 class Customer(db.Model, TimestampMixin):
     __tablename__ = "customers"
@@ -62,7 +74,7 @@ class Customer(db.Model, TimestampMixin):
     room = db.relationship("Room", backref=db.backref("customers", lazy=True))
 
 
-class Bill(db.Model, TimestampMixin):
+class AccommodationFeeBill(db.Model, TimestampMixin):
     __tablename__ = "bills"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -106,9 +118,14 @@ class Bill(db.Model, TimestampMixin):
             "updatedAt": self.update_time.isoformat() if self.update_time else None,
         }
 
+    @staticmethod
+    def calculate_Accommodation_Fee(days: int, daily_fee: float) -> float:
+        if days <= 0:
+            return 0.0
+        return round(days * daily_fee, 2)
 
 
-class BillDetail(db.Model, TimestampMixin):
+class DetailRecord(db.Model, TimestampMixin):
     __tablename__ = "bill_details"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -167,4 +184,29 @@ class RoomRequest:
     servingTime: Optional[datetime] = None
     waitingTime: Optional[datetime] = None
     requestTime: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class ACFeeBill:
+    room_id: int
+    detail_records: List[DetailRecord] = field(default_factory=list)
+
+    def calculate_AC_Fee(self, overrides: Optional[List[DetailRecord]] = None) -> float:
+        records = overrides if overrides is not None else self.detail_records
+        return round(sum(record.cost for record in records), 2)
+
+
+@dataclass
+class AccommodationOrder:
+    customer_id: int
+    room_id: int
+    created_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class DepositReceipt:
+    customer_id: int
+    room_id: int
+    amount: float
+    issued_at: datetime = field(default_factory=datetime.utcnow)
 
