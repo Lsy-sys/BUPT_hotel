@@ -1,23 +1,25 @@
 :root {
-  --bg-gradient: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-  --card-bg: rgba(255, 255, 255, 0.95);
-  --text-dark: #2c3e50;
-  --text-grey: #7f8c8d;
+  /* 删除原有的渐变背景变量，因为我们用了 particles */
+  --card-bg: rgba(255, 255, 255, 0.9);
+  /* 改为深色文字 */
+  --text-dark: #2c3e50; 
+  --text-grey: #5e6d82; /* 稍微深一点的灰色 */
   --accent-blue: #3498db;
   --accent-purple: #9b59b6;
-  --accent-green: #2ecc71;
+  --accent-green: #009688; /* Layui Green */
 }
 
 body {
   margin: 0;
   padding: 0;
   font-family: 'Poppins', sans-serif;
-  background: var(--bg-gradient);
+  /* 背景交由 HTML 中的 particles 样式控制 */
   height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
   overflow: hidden;
+  color: var(--text-dark); /* 全局文字变黑 */
 }
 
 .hero-container {
@@ -25,12 +27,14 @@ body {
   width: 100%;
   max-width: 1200px;
   padding: 20px;
+  position: relative; /* 确保在 canvas 之上 */
+  z-index: 10;
 }
 
 /* 头部 */
 .hero-header {
-  color: white;
-  margin-bottom: 60px;
+  color: var(--text-dark); /* 标题变黑 */
+  margin-bottom: 50px;
 }
 
 .logo {
@@ -40,20 +44,23 @@ body {
   letter-spacing: 2px;
 }
 
-.logo i { color: #00d2ff; }
-.highlight { color: #00d2ff; }
+.logo i { color: var(--accent-green); } /* Logo图标变绿 */
+.highlight { color: var(--accent-green); }
 
 .hero-header h1 {
   font-size: 3rem;
   margin: 0 0 10px;
-  text-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  /* 去掉文字阴影，因为背景是浅色，阴影会显脏 */
+  text-shadow: none; 
+  font-weight: 700;
 }
 
 .hero-header p {
   font-size: 1.1rem;
   opacity: 0.8;
-  font-weight: 300;
+  font-weight: 400; /* 加粗一点点 */
   letter-spacing: 1px;
+  color: var(--text-grey);
 }
 
 /* 卡片网格 */
@@ -71,18 +78,19 @@ body {
   padding: 40px 30px;
   text-decoration: none;
   color: var(--text-dark);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.08); /* 阴影改淡 */
   transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   align-items: center;
+  border: 1px solid rgba(0,0,0,0.05);
 }
 
 .role-card:hover {
   transform: translateY(-10px);
-  box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+  box-shadow: 0 20px 40px rgba(0,0,0,0.15);
 }
 
 /* 顶部装饰条 */
@@ -107,7 +115,7 @@ body {
   width: 80px;
   height: 80px;
   border-radius: 50%;
-  background: #f4f6f9;
+  background: #f0f2f5;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -129,17 +137,13 @@ body {
 .role-card h2 { margin: 0; font-size: 1.5rem; font-weight: 700; }
 .role-card p { margin: 5px 0 25px; color: var(--text-grey); font-size: 0.9rem; letter-spacing: 1px; }
 
-.hint {
-  margin-top: 20px;
-  font-size: 0.8rem;
-  color: #bdc3c7;
-}
+.hint { margin-top: 20px; font-size: 0.8rem; color: #bdc3c7; }
 
 /* 按钮样式 */
 .action-btn {
   padding: 10px 30px;
   border-radius: 50px;
-  background: #f1f2f6;
+  background: #f0f2f5;
   color: var(--text-dark);
   font-weight: 600;
   font-size: 0.9rem;
@@ -149,62 +153,67 @@ body {
 .card-staff:hover .action-btn { background: var(--accent-green); color: white; }
 .card-admin:hover .action-btn { background: var(--accent-purple); color: white; }
 
-/* 输入框组 (住客专用) */
+/* 输入框组 */
 .input-group {
   display: flex;
-  background: #f1f2f6;
+  background: #f0f2f5;
   padding: 5px;
   border-radius: 50px;
   width: 100%;
   transition: box-shadow 0.3s;
 }
+.input-group:focus-within { box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2); }
+.input-group input { border: none; background: transparent; padding: 10px 15px; flex: 1; outline: none; font-size: 1rem; text-align: center; color: #2c3e50; }
+.input-group button { border: none; background: var(--accent-blue); color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; transition: transform 0.2s; }
+.input-group button:hover { transform: scale(1.1); }
 
-.input-group:focus-within {
-  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
-}
-
-.input-group input {
-  border: none;
-  background: transparent;
-  padding: 10px 15px;
-  flex: 1;
-  outline: none;
-  font-size: 1rem;
+/* 底部开发者列表样式 */
+.footer {
+  margin-top: 50px;
+  color: var(--text-grey); /* 灰色文字 */
+  font-size: 0.85rem;
   text-align: center;
 }
 
-.input-group button {
-  border: none;
-  background: var(--accent-blue);
-  color: white;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: transform 0.2s;
-}
-
-.input-group button:hover {
-  transform: scale(1.1);
-}
-
-/* 底部 */
-.footer {
-  margin-top: 60px;
-  color: rgba(255,255,255,0.4);
+.team-label {
   font-size: 0.8rem;
+  color: #999;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.dev-list {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  font-weight: 500;
+  margin-bottom: 10px;
+  color: var(--text-dark);
+}
+
+.dev-list span {
+  transition: color 0.2s;
+}
+
+.dev-list span:not(.divider):hover {
+  color: var(--accent-green);
+  cursor: default;
+}
+
+.divider {
+  color: #ddd;
+  font-weight: 300;
+}
+
+.copyright {
+  font-size: 0.75rem;
+  opacity: 0.6;
 }
 
 /* 动画类 */
 .animate-down { animation: fadeInDown 1s ease-out; }
 .animate-up { animation: fadeInUp 1s ease-out 0.3s backwards; }
 
-@keyframes fadeInDown {
-  from { opacity: 0; transform: translateY(-30px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+@keyframes fadeInDown { from { opacity: 0; transform: translateY(-30px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }

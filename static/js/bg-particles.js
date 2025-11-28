@@ -2,9 +2,11 @@
  * 通用动态粒子背景配置
  * 依赖: particles.min.js
  */
+
 document.addEventListener('DOMContentLoaded', function() {
     // 检查页面上是否有 id="particles-js" 的容器，如果没有自动创建一个
     let container = document.getElementById('particles-js');
+
     if (!container) {
         container = document.createElement('div');
         container.id = 'particles-js';

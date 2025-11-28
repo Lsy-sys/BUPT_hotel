@@ -3,27 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>分布式温控系统 - 首页</title>
+    <title>波普特酒店空调系统 - 首页</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
     
     <style>
-        /* 覆盖 index.css 中的 body 背景，让 particles 容器显示出来 */
-        body {
-            background: transparent; /* 重要：让 body 透明 */
-        }
+        /* 确保 body 透明以显示粒子背景 */
+        body { background: transparent; }
         
-        /* 粒子背景容器 */
+        /* 粒子容器 */
         #particles-js {
             position: fixed;
             width: 100%;
             height: 100%;
             top: 0;
             left: 0;
-            z-index: -1; /* 最底层 */
-            background-color: #f0f2f5; /* 经典的浅灰底色 */
-            background-image: url(''); 
+            z-index: -1;
+            background-color: #f0f2f5; 
+            background-image: url('');
             background-size: cover;
             background-position: 50% 50%;
             background-repeat: no-repeat;
@@ -38,9 +36,9 @@
         <header class="hero-header animate-down">
             <div class="logo">
                 <i class="fa-solid fa-snowflake"></i>
-                <span>HOTEL <span class="highlight">OS</span></span>
+                <span>BUPT <span class="highlight">AC</span></span>
             </div>
-            <h1>分布式智能温控系统</h1>
+            <h1>波普特酒店空调系统</h1>
             <p>Distributed Temperature Control & Management System</p>
         </header>
 
@@ -75,14 +73,26 @@
         </div>
 
         <footer class="footer animate-up">
-            <p>© 2025 Hotel Intelligent Systems. All Rights Reserved.</p>
+            <div class="team-label">开发团队 (Development Team)</div>
+            <div class="dev-list">
+                <span>刘晟旸</span>
+                <span class="divider">/</span>
+                <span>朱文骏</span>
+                <span class="divider">/</span>
+                <span>罗栩</span>
+                <span class="divider">/</span>
+                <span>蒋致圭</span>
+                <span class="divider">/</span>
+                <span>鲁雅欣</span>
+                <span class="divider">/</span>
+                <span>江礼瑞</span>
+            </div>
+            <p class="copyright">© 2025 波普特酒店管理系统. All Rights Reserved.</p>
         </footer>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
-
     <script>
-        // 跳转逻辑
         function gotoCustomer() {
             const roomId = document.getElementById('quickRoomId').value;
             if (roomId) window.location.href = `/customer?roomId=${roomId}`;
@@ -98,57 +108,21 @@
         }
         function handleEnter(e) { if (e.key === 'Enter') gotoCustomer(); }
 
-        // === Particles.js 配置 (Layui 绿风格) ===
+        // 配置粒子 (Layui 绿)
         particlesJS("particles-js", {
             "particles": {
-                "number": {
-                    "value": 80, // 粒子数量
-                    "density": { "enable": true, "value_area": 800 }
-                },
-                "color": { "value": "#009688" }, // Layui 经典墨绿
-                "shape": {
-                    "type": "circle",
-                    "stroke": { "width": 0, "color": "#000000" }
-                },
-                "opacity": {
-                    "value": 0.5,
-                    "random": false,
-                    "anim": { "enable": false }
-                },
-                "size": {
-                    "value": 3,
-                    "random": true,
-                    "anim": { "enable": false }
-                },
-                "line_linked": {
-                    "enable": true,
-                    "distance": 150,
-                    "color": "#009688", // 连线颜色
-                    "opacity": 0.4,
-                    "width": 1
-                },
-                "move": {
-                    "enable": true,
-                    "speed": 2, // 移动速度
-                    "direction": "none",
-                    "random": false,
-                    "straight": false,
-                    "out_mode": "out",
-                    "bounce": false,
-                    "attract": { "enable": false, "rotateX": 600, "rotateY": 1200 }
-                }
+                "number": { "value": 80, "density": { "enable": true, "value_area": 800 } },
+                "color": { "value": "#009688" },
+                "shape": { "type": "circle", "stroke": { "width": 0, "color": "#000000" } },
+                "opacity": { "value": 0.5, "random": false },
+                "size": { "value": 3, "random": true },
+                "line_linked": { "enable": true, "distance": 150, "color": "#009688", "opacity": 0.4, "width": 1 },
+                "move": { "enable": true, "speed": 2 }
             },
             "interactivity": {
                 "detect_on": "canvas",
-                "events": {
-                    "onhover": { "enable": true, "mode": "grab" }, // 鼠标悬停吸附
-                    "onclick": { "enable": true, "mode": "push" }, // 点击增加粒子
-                    "resize": true
-                },
-                "modes": {
-                    "grab": { "distance": 140, "line_linked": { "opacity": 1 } },
-                    "push": { "particles_nb": 4 }
-                }
+                "events": { "onhover": { "enable": true, "mode": "grab" }, "onclick": { "enable": true, "mode": "push" } },
+                "modes": { "grab": { "distance": 140, "line_linked": { "opacity": 1 } } }
             },
             "retina_detect": true
         });
