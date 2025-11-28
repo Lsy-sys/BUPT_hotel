@@ -25,18 +25,6 @@ function loadRooms() {
         const queueClass = room.queueState === 'SERVING' ? 'queue-serving' : 
                           room.queueState === 'WAITING' ? 'queue-waiting' : '';
         
-        // 操作按钮（维修相关）
-        let actionButtons = '';
-        if (room.roomStatus === 'AVAILABLE') {
-          actionButtons = `<button class="btn btn-danger btn-sm" onclick="takeRoomOffline(${room.roomId})">标记维修</button>`;
-        } else if (room.roomStatus === 'MAINTENANCE') {
-          actionButtons = `<button class="btn btn-primary btn-sm" onclick="bringRoomOnline(${room.roomId})">恢复可用</button>`;
-        } else if (room.roomStatus === 'OCCUPIED') {
-          actionButtons = '<span style="color: #999;" title="已入住房间不能标记为维修，请先办理退房">--</span>';
-        } else {
-          actionButtons = '<span style="color: #999;">--</span>';
-        }
-        
         // 空调控制按钮（已入住或空闲房间都可以操作）
         let acControls = '';
         if (room.roomStatus === 'OCCUPIED' || room.roomStatus === 'AVAILABLE') {
@@ -67,7 +55,8 @@ function loadRooms() {
           <td>${getFanSpeedText(room.fanSpeed)}</td>
           <td>${room.acOn ? '开启' : '关闭'}</td>
           <td class="${queueClass}">${getQueueStateText(room.queueState || 'IDLE')}</td>
-          <td>${actionButtons}</td>
+          <td>${formatTimeSliceProgress(room)}</td>
+          <td>${formatFeeInfo(room)}</td>
           <td>${acControls}</td>
         `);
         $tbody.append($tr);
@@ -108,10 +97,19 @@ function loadQueues() {
       
       if (data.servingQueue && data.servingQueue.length > 0) {
         $.each(data.servingQueue, function(index, item) {
+          const servingSeconds = Math.floor(item.servingSeconds || 0);
+          const percent = timeSlice
+            ? Math.min(100, Math.round((servingSeconds / timeSlice) * 100))
+            : null;
           const $li = $('<li>').html(`
             <span>房间 ${item.roomId}</span>
             <span style="margin: 0 10px;">风速：${getFanSpeedText(item.fanSpeed)}</span>
-            <span style="color: #666; font-size: 0.85rem;">目标温度：${item.targetTemp || '--'}°C</span>
+            <span style="color: #666; font-size: 0.85rem;">已服务 ${servingSeconds}s</span>
+            ${
+              percent !== null
+                ? `<div class="time-slice-bar small"><div style="width:${percent}%"></div></div>`
+                : ''
+            }
           `);
           $servingList.append($li);
         });
@@ -122,10 +120,12 @@ function loadQueues() {
       
       if (data.waitingQueue && data.waitingQueue.length > 0) {
         $.each(data.waitingQueue, function(index, item) {
+          const waitingSeconds = Math.floor(item.waitingSeconds || 0);
+          const positionLabel = index + 1;
           const $li = $('<li>').html(`
             <span>房间 ${item.roomId}</span>
             <span style="margin: 0 10px;">风速：${getFanSpeedText(item.fanSpeed)}</span>
-            <span style="color: #666; font-size: 0.85rem;">等待中...</span>
+            <span style="color: #666; font-size: 0.85rem;">等待 ${waitingSeconds}s（第${positionLabel}位）</span>
           `);
           $waitingList.append($li);
         });
@@ -165,6 +165,43 @@ function getFanSpeedText(speed) {
     'HIGH': '高风'
   };
   return map[speed] || speed || '--';
+}
+
+function formatTimeSliceProgress(room) {
+  const state = room.queueState || 'IDLE';
+  const timeSlice = room.timeSlice || 0;
+  if (state === 'SERVING') {
+    const seconds = Math.floor(room.servingSeconds || 0);
+    if (timeSlice > 0) {
+      const percent = Math.min(100, Math.round((seconds / timeSlice) * 100));
+      return `
+        <div class="time-slice-info">
+          <span>${seconds}s / ${timeSlice}s</span>
+          <div class="time-slice-bar"><div style="width:${percent}%"></div></div>
+        </div>
+      `;
+    }
+    return `${seconds}s`;
+  }
+  if (state === 'WAITING') {
+    const wait = Math.floor(room.waitingSeconds || 0);
+    const pos = room.queuePosition ? `（第${room.queuePosition}位）` : '';
+    return `<span class="waiting-info">等待 ${wait}s${pos}</span>`;
+  }
+  return '--';
+}
+
+function formatFeeInfo(room) {
+  const roomFee = room.roomFee ?? 0;
+  const acFee = room.acFee ?? 0;
+  const total = room.totalFee ?? roomFee + acFee;
+  return `
+    <div class="fee-info">
+      <span>房费 ¥${roomFee.toFixed(2)}</span>
+      <span>空调费 ¥${acFee.toFixed(2)}</span>
+      <strong>合计 ¥${total.toFixed(2)}</strong>
+    </div>
+  `;
 }
 
 function getNextFanSpeed(currentSpeed) {
@@ -209,36 +246,34 @@ $(document).ready(function() {
     });
   });
   
-  $('#btn-force-rotation').on('click', function() {
+  // 生成详单
+  $('#btn-export-details').on('click', function() {
+    const roomId = $('#detail-room-id').val();
+    
+    // 构建请求数据
+    const data = {};
+    if (roomId) {
+      data.roomId = parseInt(roomId);
+    }
+    
     $.ajax({
-      url: `${API_BASE}/admin/maintenance/force-rotation`,
+      url: `${API_BASE}/admin/details/export`,
       method: 'POST',
-      success: function(data) {
-        const $resultDiv = $('#admin-result');
-        $resultDiv.addClass('show');
-        $resultDiv.html(`<pre>${JSON.stringify(data, null, 2)}</pre>`);
-        showToast('强制轮转完成', 'success');
-        loadQueues();
+      contentType: 'application/json',
+      data: JSON.stringify(data),
+      success: function(response) {
+        let message = `${response.message}\n总记录数: ${response.totalCount}`;
+        if (response.files && response.files.length > 0) {
+          message += '\n生成的文件:';
+          response.files.forEach(function(file) {
+            message += `\n  房间${file.roomId}: ${file.filename} (${file.count}条记录)`;
+          });
+        }
+        showToast(message, 'success');
       },
-      error: function() {
-        showToast('强制轮转失败', 'error');
-      }
-    });
-  });
-  
-  $('#btn-simulate-temp').on('click', function() {
-    $.ajax({
-      url: `${API_BASE}/admin/maintenance/simulate-temperature`,
-      method: 'POST',
-      success: function(data) {
-        const $resultDiv = $('#admin-result');
-        $resultDiv.addClass('show');
-        $resultDiv.html(`<pre>${JSON.stringify(data, null, 2)}</pre>`);
-        showToast('温度模拟完成', 'success');
-        loadRooms();
-      },
-      error: function() {
-        showToast('温度模拟失败', 'error');
+      error: function(xhr) {
+        const data = xhr.responseJSON || {};
+        showToast(data.error || '生成详单失败', 'error');
       }
     });
   });

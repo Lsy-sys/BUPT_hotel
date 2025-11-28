@@ -31,7 +31,8 @@
               <th>风速</th>
               <th>空调</th>
               <th>队列状态</th>
-              <th>操作</th>
+              <th>时间片进度</th>
+              <th>实时房费</th>
               <th>空调控制</th>
             </tr>
           </thead>
@@ -114,12 +115,16 @@
       </section>
 
       <section class="card">
-        <h2>系统运维</h2>
-        <div class="button-group">
-          <button id="btn-force-rotation" class="btn">强制轮转</button>
-          <button id="btn-simulate-temp" class="btn">模拟温度更新</button>
-        </div>
-        <div id="admin-result" class="result"></div>
+        <h2>生成详单</h2>
+        <form id="detail-export-form" class="form inline">
+          <label>
+            房间号（可选，留空则导出所有房间）
+            <input type="number" id="detail-room-id" min="1" placeholder="留空导出所有房间">
+          </label>
+          <div class="button-group">
+            <button type="button" id="btn-export-details" class="btn btn-primary">生成并下载详单（CSV）</button>
+          </div>
+        </form>
       </section>
     </main>
 

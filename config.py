@@ -19,3 +19,10 @@ class Config:
     BILLING_AC_RATE_MEDIUM = float(os.getenv("BILLING_AC_RATE_MEDIUM", 1.0))
     BILLING_AC_RATE_HIGH = float(os.getenv("BILLING_AC_RATE_HIGH", 1.5))
 
+    # 打开注释启用：每次空调完整开启+关闭记为一天房费
+    ENABLE_AC_CYCLE_DAILY_FEE = bool(int(os.getenv("ENABLE_AC_CYCLE_DAILY_FEE", 0)))
+    ENABLE_AC_CYCLE_DAILY_FEE = True
+
+    # 测试用时间加速因子：现实1秒=系统TIME_ACCELERATION_FACTOR秒
+    TIME_ACCELERATION_FACTOR = float(os.getenv("TIME_ACCELERATION_FACTOR", 6.0))
+

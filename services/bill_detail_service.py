@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import List
 
+from flask import current_app
+
 from ..extensions import db
 from ..models import DetailRecord
 
@@ -17,6 +19,17 @@ class BillDetailService:
         cost: float,
         customer_id: int | None = None,
     ) -> DetailRecord:
+        factor = current_app.config.get("TIME_ACCELERATION_FACTOR", 1.0)
+        try:
+            factor = float(factor)
+        except (TypeError, ValueError):
+            factor = 1.0
+        factor = factor if factor > 0 else 1.0
+
+        scaled_duration = max(
+            1, int(((end_time - start_time).total_seconds() / 60.0) * factor)
+        )
+
         detail = DetailRecord(
             room_id=room_id,
             customer_id=customer_id,
@@ -25,7 +38,7 @@ class BillDetailService:
             request_time=start_time,
             start_time=start_time,
             end_time=end_time,
-            duration=int((end_time - start_time).total_seconds() // 60 or 1),
+            duration=scaled_duration,
             rate=rate,
             cost=cost,
         )

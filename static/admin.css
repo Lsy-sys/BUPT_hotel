@@ -122,6 +122,38 @@ th {
   font-weight: 500;
 }
 
+.time-slice-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: #444;
+}
+
+.time-slice-bar {
+  position: relative;
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.time-slice-bar div {
+  height: 100%;
+  background: #1c64f2;
+  border-radius: 4px;
+}
+
+.time-slice-bar.small {
+  width: 100px;
+  margin-left: 10px;
+}
+
+.waiting-info {
+  color: #f59e0b;
+  font-size: 0.9rem;
+}
+
 .queues {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));

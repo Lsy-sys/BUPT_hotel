@@ -3,6 +3,7 @@ from flask import Flask, render_template
 from .config import Config
 from .database import (
     ensure_bill_detail_update_time_column,
+    ensure_room_daily_rate_column,
     ensure_room_last_temp_update_column,
     seed_default_ac_config,
 )
@@ -23,6 +24,7 @@ def create_app(
             # 先确保数据库字段存在，再初始化数据
             ensure_bill_detail_update_time_column()
             ensure_room_last_temp_update_column()
+            ensure_room_daily_rate_column()
             seed_default_ac_config()
             room_service.ensureRoomsInitialized(
                 total_count=app.config["HOTEL_ROOM_COUNT"],

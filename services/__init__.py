@@ -12,6 +12,7 @@ room_service = RoomService()
 customer_service = CustomerService()
 bill_detail_service = BillDetailService()
 accommodation_fee_bill_service = AccommodationFeeBillService()
+bill_service = accommodation_fee_bill_service  # 别名，方便使用
 scheduler = Scheduler(room_service, bill_detail_service)
 ac = AC(room_service, scheduler)
 maintenance_service = MaintenanceService(room_service, scheduler)

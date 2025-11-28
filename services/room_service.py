@@ -28,10 +28,11 @@ class RoomService:
             room = Room(
                 id=room_id,
                 status="AVAILABLE",
-                current_temp=default_temp + 7,
+                current_temp=default_temp,
                 target_temp=default_temp,
                 default_temp=default_temp,
-                fan_speed="LOW",
+                fan_speed="MEDIUM",
+                daily_rate=100.0,  # 默认日房费 100元/天
             )
             db.session.add(room)
         db.session.commit()

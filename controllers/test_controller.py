@@ -41,6 +41,34 @@ def setRoomTemperature(roomId: int):
     return jsonify({"message": f"房间{roomId}温度已设置为{temperature:.1f}度"})
 
 
+@test_bp.post("/rooms/<int:roomId>/init-temp")
+def initRoomTemperature(roomId: int):
+    """初始化房间温度：同时设置default_temp和current_temp（不修改target_temp）"""
+    temperature = request.args.get("temperature", type=float)
+    if temperature is None:
+        return jsonify({"error": "temperature参数不能为空"}), 400
+    
+    room = room_service.getRoomById(roomId)
+    if room is None:
+        return jsonify({"error": "房间不存在"}), 404
+    
+    # 同时设置default_temp和current_temp，确保温度不会自动变化
+    # 注意：不修改target_temp，target_temp是空调属性，默认值为25℃
+    room.default_temp = temperature
+    room.current_temp = temperature
+    # target_temp保持原值或使用默认值25℃，不在这里修改
+    if room.target_temp is None:
+        room.target_temp = 25.0  # 如果为None，设置为默认值25℃
+    room.last_temp_update = None  # 清除温度更新时间，避免自动变化
+    room_service.updateRoom(room)
+    return jsonify({
+        "message": f"房间{roomId}温度已初始化：default_temp={temperature:.1f}℃, current_temp={temperature:.1f}℃, target_temp={room.target_temp:.1f}℃",
+        "defaultTemp": temperature,
+        "currentTemp": temperature,
+        "targetTemp": room.target_temp
+    })
+
+
 @test_bp.post("/reset")
 def resetSystem():
     for room in room_service.getAllRooms():

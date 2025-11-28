@@ -75,7 +75,7 @@ class ReportService:
         grouped_duration: Dict[str, int] = defaultdict(int)
         grouped_cost: Dict[str, float] = defaultdict(float)
         for detail in details:
-            speed = (detail.fan_speed or "LOW").upper()
+            speed = (detail.fan_speed or "MEDIUM").upper()
             grouped_duration[speed] += detail.duration
             grouped_cost[speed] += detail.cost
 

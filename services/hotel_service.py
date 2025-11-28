@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Dict, List, Optional
 
+from flask import current_app
 from ..models import (
     AccommodationOrder,
     Customer,
@@ -141,14 +142,36 @@ class FrontDesk:
         room.customer_name = None
         room.ac_on = False
         room.ac_session_start = None
+        room.waiting_start_time = None
+        room.serving_start_time = None
+        room.cooling_paused = False
+        room.pause_start_temp = None
+        # 退房后立即回到默认温度
+        default_temp = room.default_temp or current_app.config.get(
+            "HOTEL_DEFAULT_TEMP", 25
+        )
+        room.current_temp = default_temp
+        room.last_temp_update = datetime.utcnow()
         self.room_service.updateRoom(room)
 
-        details = self.bill_detail_service.getBillDetailsByRoomIdAndTimeRange(
-            room_id=room_id,
-            start=customer.check_in_time,
-            end=check_out_time,
-            customer_id=customer.id,  # 只计算该客户的账单详情，排除管理员开启的空调产生的账单
-        )
+        # 如果启用了 AC 周期计费，需要查询该房间在入住期间的所有详单（包括管理员开启的）
+        # 否则只查询该客户的详单
+        if current_app.config.get("ENABLE_AC_CYCLE_DAILY_FEE"):
+            # 查询该房间在入住期间的所有详单（包括管理员开启的）
+            details = self.bill_detail_service.getBillDetailsByRoomIdAndTimeRange(
+                room_id=room_id,
+                start=customer.check_in_time,
+                end=check_out_time,
+                customer_id=None,  # 不过滤customer_id，包含所有详单
+            )
+        else:
+            # 只计算该客户的账单详情，排除管理员开启的空调产生的账单
+            details = self.bill_detail_service.getBillDetailsByRoomIdAndTimeRange(
+                room_id=room_id,
+                start=customer.check_in_time,
+                end=check_out_time,
+                customer_id=customer.id,
+            )
         bill = self.accommodation_fee_bill_service.createAndSettleBill(details, customer, room)
         _ = DepositReceipt(customer_id=customer.id, room_id=room_id, amount=0.0)
 

@@ -23,7 +23,7 @@ class Room(db.Model, TimestampMixin):
     target_temp = db.Column(db.Float)
     ac_on = db.Column(db.Boolean, default=False)
     ac_mode = db.Column(db.String(20), default="COOLING")
-    fan_speed = db.Column(db.String(20), default="LOW")
+    fan_speed = db.Column(db.String(20), default="MEDIUM")
     default_temp = db.Column(db.Float, default=25.0)
     check_in_time = db.Column(db.DateTime)
     ac_session_start = db.Column(db.DateTime)
@@ -32,6 +32,9 @@ class Room(db.Model, TimestampMixin):
     customer_name = db.Column(db.String(50))
     waiting_start_time = db.Column(db.DateTime)
     serving_start_time = db.Column(db.DateTime)
+    cooling_paused = db.Column(db.Boolean, default=False)  # 是否因达到目标温度而暂停服务
+    pause_start_temp = db.Column(db.Float)  # 暂停时的温度（用于判断是否回温1℃）
+    daily_rate = db.Column(db.Float, default=100.0)  # 房间日房费（元/天）
 
     def to_dict(self) -> dict:
         return {

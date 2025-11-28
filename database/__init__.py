@@ -97,3 +97,33 @@ def ensure_room_last_temp_update_column() -> None:
         db.session.rollback()
         print(f"警告：添加last_temp_update字段时出错: {e}")
         # 如果字段已存在或其他非致命错误，继续执行
+
+
+def ensure_room_daily_rate_column() -> None:
+    """确保rooms表有daily_rate字段"""
+    inspector = inspect(db.engine)
+    try:
+        # 检查表是否存在
+        if "rooms" not in inspector.get_table_names():
+            # 表不存在，会在create_all时创建，不需要手动添加字段
+            return
+        
+        columns = {column["name"] for column in inspector.get_columns("rooms")}
+        if "daily_rate" in columns:
+            return
+        
+        # 表存在但字段不存在，添加字段
+        db.session.execute(
+            text(
+                """
+                ALTER TABLE rooms
+                ADD COLUMN daily_rate DOUBLE DEFAULT 100.0 COMMENT '房间日房费（元/天）'
+                """
+            )
+        )
+        db.session.commit()
+    except Exception as e:
+        # 如果出错，回滚并打印错误（但不中断程序）
+        db.session.rollback()
+        print(f"警告：添加daily_rate字段时出错: {e}")
+        # 如果字段已存在或其他非致命错误，继续执行

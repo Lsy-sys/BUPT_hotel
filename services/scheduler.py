@@ -24,21 +24,29 @@ class Scheduler:
         return int(current_app.config["HOTEL_TIME_SLICE"])
 
     def _rate_by_fan_speed(self, fan_speed: str) -> float:
-        fan_speed = (fan_speed or "LOW").upper()
+        fan_speed = (fan_speed or "MEDIUM").upper()
         if fan_speed == "HIGH":
             return current_app.config["BILLING_AC_RATE_HIGH"]
         if fan_speed == "MEDIUM":
             return current_app.config["BILLING_AC_RATE_MEDIUM"]
         return current_app.config["BILLING_AC_RATE_LOW"]
 
+    def _time_factor(self) -> float:
+        factor = current_app.config.get("TIME_ACCELERATION_FACTOR", 1.0)
+        try:
+            factor = float(factor)
+        except (TypeError, ValueError):
+            factor = 1.0
+        return factor if factor > 0 else 1.0
+
     def _priority_score(self, request: RoomRequest) -> int:
         score_map = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
-        return score_map.get((request.fanSpeed or "LOW").upper(), 1)
+        return score_map.get((request.fanSpeed or "MEDIUM").upper(), 2)
 
     def _elapsed_seconds(self, source: Optional[datetime], now: datetime) -> float:
         if not source:
             return 0.0
-        return max(0.0, (now - source).total_seconds())
+        return max(0.0, (now - source).total_seconds() * self._time_factor())
 
     def _remove_from_queue(
         self, queue: List[RoomRequest], room_id: int
@@ -67,6 +75,39 @@ class Scheduler:
     def _remove_request(self, room_id: int) -> None:
         self._remove_from_queue(self.serving_queue, room_id)
         self._remove_from_queue(self.waiting_queue, room_id)
+    
+    def _pause_cooling(self, room: Room) -> None:
+        """暂停服务：从队列移除，但保持ac_on状态"""
+        self._remove_request(room.id)
+        room.serving_start_time = None
+        room.waiting_start_time = None
+        self.room_service.updateRoom(room)
+        # 移除后重新平衡队列，让等待队列中的房间补充
+        self._rebalance_queues()
+    
+    def _resume_cooling(self, room: Room) -> None:
+        """恢复服务：重新加入队列（保持原有参数）"""
+        now = datetime.utcnow()
+        request = RoomRequest(
+            roomId=room.id,
+            fanSpeed=room.fan_speed,
+            mode=room.ac_mode,
+            targetTemp=room.target_temp,
+        )
+        
+        # 根据容量决定加入哪个队列
+        capacity = self._capacity()
+        if len(self.serving_queue) < capacity:
+            request.servingTime = now
+            self.serving_queue.append(request)
+            self._mark_room_serving(room.id, now)
+        else:
+            request.waitingTime = now
+            self.waiting_queue.append(request)
+            self._mark_room_waiting(room.id, now)
+        
+        # 重新平衡队列
+        self._rebalance_queues()
     
     def _deduplicate_queues(self) -> None:
         """清理队列中的重复房间，每个房间只保留一个实例（保留第一个）"""
@@ -127,44 +168,36 @@ class Scheduler:
         self._mark_room_serving(request.roomId, timestamp)
 
     def _rotate_time_slice(self, *, force: bool = False) -> None:
+        """时间片调度：服务队列中服务时长最长的（达到2分钟）移到等待队列"""
         if not self.waiting_queue or not self.serving_queue:
             return
         capacity = self._capacity()
         if len(self.serving_queue) < capacity:
             return
         now = datetime.utcnow()
+        time_slice_seconds = self._time_slice()
+        
+        # 检查服务队列中是否有服务时长达到2分钟的房间，移到等待队列
+        serving_to_demote = []
+        for req in self.serving_queue:
+            serving_elapsed = self._elapsed_seconds(req.servingTime, now)
+            if serving_elapsed >= time_slice_seconds:
+                serving_to_demote.append((serving_elapsed, req))
+        
+        # 按服务时长从长到短排序，优先移出服务时间最长的
+        serving_to_demote.sort(key=lambda x: x[0], reverse=True)
+        
+        # 将服务时长达到2分钟的房间移到等待队列
+        for _, req in serving_to_demote:
+            demoted = self._remove_from_queue(self.serving_queue, req.roomId)
+            if demoted:
+                self._move_to_waiting(demoted, now)
+        
+        # 然后从等待队列中按优先级补充到服务队列
         self._sort_waiting_queue()
-        while self.waiting_queue:
-            lowest_serving = min(
-                self.serving_queue,
-                key=lambda req: (
-                    self._priority_score(req),
-                    req.servingTime or now,
-                    req.roomId,
-                ),
-            )
-            candidate = self.waiting_queue[0]
-            candidate_priority = self._priority_score(candidate)
-            lowest_priority = self._priority_score(lowest_serving)
-            waiting_elapsed = self._elapsed_seconds(candidate.waitingTime, now)
-
-            should_swap = False
-            if candidate_priority > lowest_priority:
-                should_swap = True
-            elif candidate_priority == lowest_priority:
-                if force or waiting_elapsed >= self._time_slice():
-                    should_swap = True
-
-            if not should_swap:
-                break
-
+        while self.waiting_queue and len(self.serving_queue) < capacity:
             promoted = self.waiting_queue.pop(0)
-            demoted = self._remove_from_queue(self.serving_queue, lowest_serving.roomId)
-            if demoted is None:
-                break
-            self._move_to_waiting(demoted, now)
             self._move_to_serving(promoted, now)
-            self._sort_waiting_queue()
 
     def _enforce_capacity(self) -> None:
         """强制限制服务队列不超过容量，超出部分移到等待队列"""
@@ -253,7 +286,10 @@ class Scheduler:
 
         now = datetime.utcnow()
         start_time = room.ac_session_start or now
-        duration_minutes = max(1, int((now - start_time).total_seconds() // 60))
+        duration_minutes = max(
+            1,
+            int(((now - start_time).total_seconds() / 60.0) * self._time_factor()),
+        )
         rate = self._rate_by_fan_speed(room.fan_speed)
         cost = rate * duration_minutes
 
@@ -280,6 +316,8 @@ class Scheduler:
         room.ac_session_start = None
         room.waiting_start_time = None
         room.serving_start_time = None
+        room.cooling_paused = False
+        room.pause_start_temp = None
         # 更新温度更新时间，以便温度回归逻辑正常工作
         room.last_temp_update = now
         self.room_service.updateRoom(room)
@@ -298,6 +336,10 @@ class Scheduler:
         if not room.ac_on:
             raise ValueError("请先开启空调")
         room.target_temp = target_temp
+        if room.cooling_paused:
+            room.cooling_paused = False
+            room.pause_start_temp = None
+            self._resume_cooling(room)
         self.room_service.updateRoom(room)
         for queue in (self.serving_queue, self.waiting_queue):
             for req in queue:
@@ -369,6 +411,9 @@ class Scheduler:
         高风: 1度/1分钟
         中风: 1度/2分钟  
         低风: 1度/3分钟
+        
+        达到目标温度后暂停服务，启动回温程序（每分钟回温0.5℃）
+        回温1℃后重新加入队列
         """
         now = datetime.utcnow()
         current_temp = room.current_temp or room.default_temp or 0.0
@@ -376,13 +421,15 @@ class Scheduler:
         
         # 计算从上次更新到现在的时间差（分钟）
         if room.last_temp_update:
-            elapsed_minutes = (now - room.last_temp_update).total_seconds() / 60.0
+            elapsed_minutes = (
+                (now - room.last_temp_update).total_seconds() / 60.0 * self._time_factor()
+            )
         else:
             # 如果是第一次更新，假设间隔为3秒（前端刷新间隔）
-            elapsed_minutes = 3.0 / 60.0
+            elapsed_minutes = (3.0 / 60.0) * self._time_factor()
         
         # 根据风速确定温度变化速度（度/分钟）
-        fan_speed = (room.fan_speed or "LOW").upper()
+        fan_speed = (room.fan_speed or "MEDIUM").upper()
         if fan_speed == "HIGH":
             change_rate = 1.0  # 1度/分钟
         elif fan_speed == "MEDIUM":
@@ -391,25 +438,104 @@ class Scheduler:
             change_rate = 1.0 / 3.0  # 1度/3分钟 ≈ 0.333度/分钟
         
         if room.ac_on and room.target_temp is not None:
-            diff = room.target_temp - current_temp
-            if abs(diff) < 0.1:
-                new_temp = room.target_temp
+            # 检查房间是否在服务队列中
+            is_serving = any(req.roomId == room.id for req in self.serving_queue)
+            
+            # 如果房间在等待队列中（不在服务队列中），应该回温
+            # 因为虽然空调开着，但实际上没有在服务
+            if not is_serving and not room.cooling_paused:
+                # 等待队列中的房间应该回温，设置暂停状态
+                room.cooling_paused = True
+                if room.pause_start_temp is None:
+                    # 记录开始等待时的温度
+                    room.pause_start_temp = current_temp
+            
+            # 如果正在回温（cooling_paused=True），执行回温逻辑
+            if room.cooling_paused:
+                # 回温速度：每分钟回温0.5℃
+                rewarming_rate = 0.5  # 度/分钟
+                max_change = rewarming_rate * elapsed_minutes
+                
+                # 回温方向：从目标温度向 default_temp（环境温度）回温
+                if room.default_temp is None:
+                    # 如果没有默认温度，无法回温，保持当前温度
+                    new_temp = current_temp
+                else:
+                    # 计算向 default_temp 回温的方向和步长
+                    # 回温总是从 target_temp 向 default_temp 方向回温
+                    diff_to_default = room.default_temp - current_temp
+                    
+                    if abs(diff_to_default) < 0.1:
+                        # 已经到达 default_temp（环境温度），停止回温
+                        new_temp = room.default_temp
+                        # 如果房间在服务队列中，恢复服务；如果在等待队列中，保持等待状态
+                        if is_serving:
+                            room.cooling_paused = False
+                            room.pause_start_temp = None
+                            self._resume_cooling(room)
+                        else:
+                            # 等待队列中的房间到达环境温度后，保持暂停状态
+                            room.cooling_paused = True
+                            room.pause_start_temp = None
+                    else:
+                        # 向 default_temp 回温（每分钟0.5℃）
+                        step = max(min(diff_to_default, max_change), -max_change)
+                        new_temp = current_temp + step
+                        
+                        # 检查是否回温1℃（从暂停时的温度）
+                        # 注意：如果房间在等待队列中，回温1℃后不应该自动恢复服务
+                        # 只有在服务队列中且回温1℃后才恢复服务
+                        if room.pause_start_temp is not None and is_serving:
+                            temp_diff = abs(new_temp - room.pause_start_temp)
+                            if temp_diff >= 1.0:
+                                # 回温1℃，重新加入队列（保持原有参数）
+                                room.cooling_paused = False
+                                room.pause_start_temp = None
+                                self._resume_cooling(room)
             else:
-                # 根据时间间隔和变化速度计算应该变化的温度
-                max_change = change_rate * elapsed_minutes
-                step = max(min(diff, max_change), -max_change)
-                new_temp = current_temp + step
+                # 正常制冷/制热逻辑（仅在服务队列中执行）
+                if not is_serving:
+                    # 如果不在服务队列中，不应该执行制冷/制热逻辑
+                    # 这种情况理论上不应该发生，因为上面已经处理了
+                    new_temp = current_temp
+                else:
+                    diff = room.target_temp - current_temp
+                    if abs(diff) < 0.1:
+                        # 达到目标温度
+                        new_temp = room.target_temp
+                        
+                        # 如果目标温度等于默认温度（环境温度），不需要暂停服务
+                        # 因为已经到达环境温度，不会回温，保持服务状态即可
+                        if room.default_temp is not None and abs(room.target_temp - room.default_temp) < 0.1:
+                            # target_temp == default_temp，保持服务状态，不暂停
+                            # 温度已经稳定在环境温度，不需要回温
+                            pass
+                        else:
+                            # target_temp != default_temp，暂停服务，启动回温程序
+                            # 回温将从 target_temp 向 default_temp 方向回温
+                            room.cooling_paused = True
+                            room.pause_start_temp = new_temp  # 记录暂停时的温度（即 target_temp）
+                            # 从服务队列移除，但保持ac_on状态
+                            self._pause_cooling(room)
+                    else:
+                        # 根据时间间隔和变化速度计算应该变化的温度
+                        max_change = change_rate * elapsed_minutes
+                        step = max(min(diff, max_change), -max_change)
+                        new_temp = current_temp + step
         else:
+            # 空调关闭时，温度每分钟回温0.5℃，直至回到房间的默认温度
             if room.default_temp is None:
                 return
             diff = room.default_temp - current_temp
             if abs(diff) < 0.1:
-                return
-            # 空调关闭时，温度自然回归，速度较慢（使用50%的速度）
-            natural_rate = change_rate * 0.5
-            max_change = natural_rate * elapsed_minutes
-            step = max(min(diff, max_change), -max_change)
-            new_temp = current_temp + step
+                room.cooling_paused = False
+                room.pause_start_temp = None
+                new_temp = room.default_temp
+            else:
+                rewarming_rate = 0.5  # 0.5℃ / 分钟
+                max_change = rewarming_rate * elapsed_minutes
+                step = max(min(diff, max_change), -max_change)
+                new_temp = current_temp + step
         
         if abs(new_temp - current_temp) >= 1e-6:
             room.current_temp = round(new_temp, 2)
@@ -429,6 +555,8 @@ class Scheduler:
         
         # 自动更新当前温度
         self._updateRoomTemperature(room)
+        # 刷新room对象以获取最新状态
+        room = self.room_service.getRoomById(room_id)
         
         status = room.to_dict()
         now = datetime.utcnow()
@@ -436,18 +564,23 @@ class Scheduler:
         waiting_seconds = 0.0
         serving_seconds = 0.0
         queue_position = None
-        for req in self.serving_queue:
-            if req.roomId == room_id:
-                queue_state = "SERVING"
-                serving_seconds = self._elapsed_seconds(req.servingTime, now)
-                break
+        
+        # 如果房间处于暂停状态，显示为PAUSED
+        if room.cooling_paused:
+            queue_state = "PAUSED"
         else:
-            for idx, req in enumerate(self.waiting_queue):
+            for req in self.serving_queue:
                 if req.roomId == room_id:
-                    queue_state = "WAITING"
-                    waiting_seconds = self._elapsed_seconds(req.waitingTime, now)
-                    queue_position = idx + 1
+                    queue_state = "SERVING"
+                    serving_seconds = self._elapsed_seconds(req.servingTime, now)
                     break
+            else:
+                for idx, req in enumerate(self.waiting_queue):
+                    if req.roomId == room_id:
+                        queue_state = "WAITING"
+                        waiting_seconds = self._elapsed_seconds(req.waitingTime, now)
+                        queue_position = idx + 1
+                        break
         status.update(
             {
                 "queueState": queue_state,
@@ -487,10 +620,14 @@ class Scheduler:
             if not room:
                 continue
             
+            # 如果房间处于暂停状态（cooling_paused=True），不恢复队列
+            if room.cooling_paused:
+                continue
+            
             # 创建RoomRequest
             request = RoomRequest(
                 roomId=room.id,
-                fanSpeed=room.fan_speed or "LOW",
+                fanSpeed=room.fan_speed or "MEDIUM",
                 mode=room.ac_mode or "COOLING",
                 targetTemp=room.target_temp,
             )
@@ -525,6 +662,12 @@ class Scheduler:
         self._restore_queue_from_database()
         # 清理重复的房间
         self._deduplicate_queues()
+        # 执行时间片检查和温度更新
+        self._rebalance_queues()
+        # 更新所有房间的温度
+        rooms = self.room_service.getAllRooms()
+        for room in rooms:
+            self._updateRoomTemperature(room)
         # 在返回状态前，强制限制服务队列不超过容量
         self._enforce_capacity()
         now = datetime.utcnow()
@@ -556,60 +699,18 @@ class Scheduler:
         return self.getScheduleStatus()
 
     def simulateTemperatureUpdate(self) -> dict:
-        """批量更新所有房间的温度，根据风速和时间间隔调整变化速度
-        高风: 1度/1分钟
-        中风: 1度/2分钟  
-        低风: 1度/3分钟
-        """
+        """批量更新所有房间的温度，使用与_updateRoomTemperature相同的逻辑"""
         now = datetime.utcnow()
         rooms = self.room_service.getAllRooms()
         updated = 0
         for room in rooms:
-            current_temp = room.current_temp or room.default_temp or 0.0
-            new_temp = current_temp
-            
-            # 计算从上次更新到现在的时间差（分钟）
-            if room.last_temp_update:
-                elapsed_minutes = (now - room.last_temp_update).total_seconds() / 60.0
-            else:
-                # 如果是第一次更新，假设间隔为1分钟
-                elapsed_minutes = 1.0
-            
-            # 根据风速确定温度变化速度（度/分钟）
-            fan_speed = (room.fan_speed or "LOW").upper()
-            if fan_speed == "HIGH":
-                change_rate = 1.0  # 1度/分钟
-            elif fan_speed == "MEDIUM":
-                change_rate = 0.5  # 1度/2分钟 = 0.5度/分钟
-            else:  # LOW
-                change_rate = 1.0 / 3.0  # 1度/3分钟 ≈ 0.333度/分钟
-            
-            if room.ac_on and room.target_temp is not None:
-                diff = room.target_temp - current_temp
-                if abs(diff) < 0.1:
-                    new_temp = room.target_temp
-                else:
-                    # 根据时间间隔和变化速度计算应该变化的温度
-                    max_change = change_rate * elapsed_minutes
-                    step = max(min(diff, max_change), -max_change)
-                    new_temp = current_temp + step
-            else:
-                if room.default_temp is None:
-                    continue
-                diff = room.default_temp - current_temp
-                if abs(diff) < 0.1:
-                    continue
-                # 空调关闭时，温度自然回归，速度较慢（使用50%的速度）
-                natural_rate = change_rate * 0.5
-                max_change = natural_rate * elapsed_minutes
-                step = max(min(diff, max_change), -max_change)
-                new_temp = current_temp + step
-            if abs(new_temp - current_temp) < 1e-6:
-                continue
-            room.current_temp = round(new_temp, 2)
-            room.last_temp_update = now
-            self.room_service.updateRoom(room)
-            updated += 1
+            # 使用相同的温度更新逻辑
+            old_temp = room.current_temp
+            self._updateRoomTemperature(room)
+            # 刷新room对象以获取最新温度
+            room = self.room_service.getRoomById(room.id)
+            if room and abs((room.current_temp or 0) - (old_temp or 0)) >= 1e-6:
+                updated += 1
         return {"message": "温度已模拟更新", "updatedRooms": updated}
 
     def getServingQueue(self) -> List[RoomRequest]:

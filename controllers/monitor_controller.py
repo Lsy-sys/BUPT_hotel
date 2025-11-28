@@ -1,6 +1,6 @@
-from flask import Blueprint, jsonify
+from flask import Blueprint, jsonify, current_app
 
-from ..services import ac, room_service, scheduler
+from ..services import ac, room_service, scheduler, bill_service
 
 monitor_bp = Blueprint("monitor", __name__, url_prefix="/api/monitor")
 
@@ -11,6 +11,7 @@ def getRoomStatus():
     
     rooms = room_service.getAllRooms()
     result = []
+    time_slice = current_app.config["HOTEL_TIME_SLICE"]
     for room in rooms:
         ac_state = ac.getACByRoomId(room.id)
         customer = customer_service.getCustomerByRoomId(room.id) if room.status == "OCCUPIED" else None
@@ -19,9 +20,25 @@ def getRoomStatus():
         try:
             ac_status = scheduler.RequestState(room.id)
             queue_state = ac_status.get("queueState", "IDLE")
+            waiting_seconds = ac_status.get("waitingSeconds", 0.0)
+            serving_seconds = ac_status.get("servingSeconds", 0.0)
+            queue_position = ac_status.get("queuePosition")
         except:
             queue_state = "IDLE"
+            waiting_seconds = 0.0
+            serving_seconds = 0.0
+            queue_position = None
         
+        # 计算实时房费
+        try:
+            bill_info = bill_service.getCurrentFeeDetail(room)
+        except Exception as e:
+            # 调试：打印异常信息
+            import traceback
+            print(f"计算房间 {room.id} 费用时出错: {e}")
+            traceback.print_exc()
+            bill_info = {"roomFee": 0.0, "acFee": 0.0, "total": 0.0}
+
         status = {
             "roomId": room.id,
             "roomStatus": room.status,
@@ -32,6 +49,13 @@ def getRoomStatus():
             "mode": ac_state.ac_mode if ac_state else None,
             "acOn": ac_state.ac_on if ac_state else False,
             "queueState": queue_state,
+            "waitingSeconds": waiting_seconds,
+            "servingSeconds": serving_seconds,
+            "queuePosition": queue_position,
+            "timeSlice": time_slice,
+            "roomFee": bill_info["roomFee"],
+            "acFee": bill_info["acFee"],
+            "totalFee": bill_info["total"],
             "customerName": customer.name if customer else (room.customer_name if room.status == "OCCUPIED" else None),
             "customerIdCard": customer.id_card if customer else None,
             "customerPhone": customer.phone_number if customer else None,
