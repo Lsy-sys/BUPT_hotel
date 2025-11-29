@@ -104,30 +104,31 @@
 #### 4.1 获取所有房间
 - **路径**: `GET /hotel/rooms`
 - **参数**: 无
-- **返回**: 房间对象数组
+- **返回**: 房间对象数组（每个房间包含 id, status, currentTemp, targetTemp, acOn, acMode, fanSpeed, defaultTemp 等字段）
 
 #### 4.2 获取可用房间ID列表
 - **路径**: `GET /hotel/available`
 - **参数**: 无
-- **返回**: `[1, 2, 3, 5, 7]` (房间ID数组)
+- **返回**: `[1, 2, 3, 5]` (可用房间ID数组)
 
 #### 4.3 获取可用房间详情列表
 - **路径**: `GET /hotel/rooms/available`
 - **参数**: 无
-- **返回**: 可用房间对象数组
+- **返回**: 可用房间对象数组（每个房间包含完整房间信息）
 
 #### 4.4 办理入住
 - **路径**: `POST /hotel/checkin`
 - **参数** (JSON Body): 
 ```json
 {
-  "roomId": 101,
+  "roomId": 1,
   "name": "张三",
   "idCard": "110101199001011234",
   "phoneNumber": "13800138000"
 }
 ```
 - **返回**: `{ "message": "入住成功" }`
+- **错误**: `{ "error": "错误信息" }` (400状态码)
 
 #### 4.5 办理退房
 - **路径**: `POST /hotel/checkout/<roomId>`
@@ -135,11 +136,33 @@
 - **返回**: 
 ```json
 {
-  "customer": { ... },
-  "detailBill": [ ... ],
-  "bill": { ... }
+  "customer": {
+    "name": "张三",
+    "idCard": "110101199001011234",
+    "phoneNumber": "13800138000"
+  },
+  "detailBill": [
+    {
+      "roomId": 1,
+      "startTime": "2024-01-01T10:00:00",
+      "endTime": "2024-01-01T12:00:00",
+      "duration": 120,
+      "fanSpeed": "MEDIUM",
+      "currentFee": 60.0,
+      "fee": 60.0
+    }
+  ],
+  "bill": {
+    "roomId": 1,
+    "checkinTime": "2024-01-01",
+    "checkoutTime": "2024-01-02",
+    "duration": "1",
+    "roomFee": 100.0,
+    "acFee": 60.0
+  }
 }
 ```
+- **错误**: `{ "error": "错误信息" }` (400状态码)
 
 ---
 
