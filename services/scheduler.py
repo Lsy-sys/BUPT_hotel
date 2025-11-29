@@ -285,6 +285,9 @@ class Scheduler:
         if room.default_temp is not None:
             room.current_temp = room.default_temp
 
+        # === 新增：关机恢复默认风速 (中风) ===
+        room.fan_speed = "MEDIUM"
+        # ==================================
         room.ac_on = False
         room.ac_session_start = None
         room.waiting_start_time = None
