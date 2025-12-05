@@ -7,7 +7,7 @@ class DetailBill:
     roomId: int
     startTime: str
     endTime: str
-    duration: int
+    duration: float
     fanSpeed: str
     rate: float
     acFee: float

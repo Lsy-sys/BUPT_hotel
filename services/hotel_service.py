@@ -156,22 +156,33 @@ class FrontDesk:
         
         # 重新获取房间对象（因为 PowerOff 可能已经更新了状态）
         room = self.room_service.getRoomById(room_id)
+        
+        # 清除所有客户相关信息
         room.status = "AVAILABLE"
         room.customer_name = None
-        # 注意：ac_on 等状态已经在 PowerOff 中处理了，这里只需要确保状态正确
-        # 但为了保险，还是设置一下
+        room.check_in_time = None
+        
+        # 清除空调相关状态
         room.ac_on = False
         room.ac_session_start = None
         room.waiting_start_time = None
         room.serving_start_time = None
         room.cooling_paused = False
         room.pause_start_temp = None
-        # 退房后立即回到默认温度
+        room.billing_start_temp = None
+        
+        # 重置温度和风速到默认值
         default_temp = room.default_temp or current_app.config.get(
             "HOTEL_DEFAULT_TEMP", 25
         )
         room.current_temp = default_temp
+        room.target_temp = None
+        room.fan_speed = "MEDIUM"  # 重置为默认风速
         room.last_temp_update = datetime.utcnow()
+        
+        # 清除分配的空调编号（如果有）
+        room.assigned_ac_number = None
+        
         self.room_service.updateRoom(room)
 
         # 与报告页面完全一致：查询该房间的所有详单
@@ -181,27 +192,13 @@ class FrontDesk:
         _ = DepositReceipt(customer_id=customer.id, room_id=room_id, amount=0.0)
 
         from ..vo.checkout_response import CustomerInfo
-
+        
         checkout_response = CheckoutResponse()
         checkout_response.customer = CustomerInfo(
             name=customer.name,
             idCard=customer.id_card,
             phoneNumber=customer.phone_number,
         )
-        checkout_response.detailBill = [
-            DetailBill(
-                roomId=detail.room_id,
-                startTime=detail.start_time.isoformat(),
-                endTime=detail.end_time.isoformat(),
-                duration=detail.duration,
-                fanSpeed=detail.fan_speed,
-                rate=detail.rate,
-                acFee=detail.cost,
-                roomFee=0.0,  # 暂时设为0，后续统一计算房费分配
-                fee=detail.cost,  # 暂时等于空调费，后续统一计算
-            )
-            for detail in details
-        ]
         # 参照测试脚本的方式获取房费和空调费数据
         from . import scheduler
         state = scheduler.RequestState(room_id)
@@ -255,7 +252,7 @@ class FrontDesk:
                     roomFee=0.0,  # 空调记录的房费设为0，房费在汇总中显示
                     fee=round(detail.cost, 2),  # 空调记录的总费用就是空调费
                 )
-            )
+        )
         
         # === 自动保存详单到本地 csv 文件夹 ===
         try:

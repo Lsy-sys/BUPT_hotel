@@ -107,7 +107,12 @@ class Scheduler:
             if abs(new_temp - target_temp) < 0.01:
                 new_temp = target_temp
                 if not force_update:
-                    self._handle_temp_reached(room, new_temp)
+                    # 在调用 _handle_temp_reached 之前，先检查是否已经处理过
+                    # 强制刷新 room 对象，确保读取最新的 cooling_paused 状态
+                    from ..extensions import db
+                    db.session.refresh(room)
+                    if not room.cooling_paused:
+                        self._handle_temp_reached(room, new_temp)
         else:
             # 回温速率
             rewarm_rate = 0.5
@@ -140,19 +145,40 @@ class Scheduler:
 
     def _settle_current_service_period(self, room: Room, end_time: datetime, reason: str) -> None:
         if not room.serving_start_time or room.billing_start_temp is None:
+            print(f"[Skip Settle] Room {room.id}, no serving_start_time or billing_start_temp, reason={reason}")
             return
 
         # === 防重复结算：若已存在相同 start_time 的账单，则跳过 ===
+        # 必须在计算费用之前检查，避免重复计算
         from ..models import DetailRecord
         from ..extensions import db
-        exists = db.session.query(DetailRecord.id).filter(
-            DetailRecord.room_id == room.id,
-            DetailRecord.detail_type == "AC",
-            DetailRecord.start_time == room.serving_start_time
-        ).first()
+        # 强制刷新数据库会话，确保查询到最新提交的数据
+        db.session.expire_all()
+        
+        # 使用 SELECT FOR UPDATE 锁定，防止并发重复创建
+        # 如果锁定失败（说明另一个事务正在处理），等待一小段时间后重试
+        try:
+            exists = db.session.query(DetailRecord.id).filter(
+                DetailRecord.room_id == room.id,
+                DetailRecord.detail_type == "AC",
+                DetailRecord.start_time == room.serving_start_time
+            ).with_for_update(nowait=True).first()
+        except Exception as lock_error:
+            # 如果锁定失败，等待一小段时间后再次检查
+            import time
+            time.sleep(0.01)  # 等待10毫秒
+            db.session.expire_all()
+            exists = db.session.query(DetailRecord.id).filter(
+                DetailRecord.room_id == room.id,
+                DetailRecord.detail_type == "AC",
+                DetailRecord.start_time == room.serving_start_time
+            ).first()
+        
         if exists:
-            print(f"[Skip Duplicate] Room {room.id}, start={room.serving_start_time}, reason={reason}")
+            print(f"[Skip Duplicate] Room {room.id}, start={room.serving_start_time}, reason={reason}, existing_id={exists}")
             return
+        
+        print(f"[Settle Start] Room {room.id}, start={room.serving_start_time}, reason={reason}")
 
         start_temp = float(room.billing_start_temp)
         end_temp = float(room.current_temp)
@@ -179,18 +205,49 @@ class Scheduler:
             c = customer_service.getCustomerByRoomId(room.id)
             if c: customer_id = c.id
 
-        self.bill_detail_service.createBillDetail(
-            room_id=room.id,
-            ac_mode=mode,
-            fan_speed=room.fan_speed,
-            start_time=room.serving_start_time,
-            end_time=end_time,
-            rate=rate,
-            cost=cost,
-            customer_id=customer_id,
-            detail_type="AC"
-        )
-        print(f"[Scheduler] 结算 AC费 Room {room.id}: {cost:.2f}元")
+        # 在创建详单之前，再次检查是否已存在（双重保险）
+        # 防止在检查后、创建前的短暂时间窗口内被并发调用
+        db.session.expire_all()
+        exists_again = db.session.query(DetailRecord.id).filter(
+            DetailRecord.room_id == room.id,
+            DetailRecord.detail_type == "AC",
+            DetailRecord.start_time == room.serving_start_time
+        ).first()
+        if exists_again:
+            print(f"[Skip Duplicate Before Create] Room {room.id}, start={room.serving_start_time}, reason={reason}, existing_id={exists_again}")
+            return
+        
+        # 创建详单（内部也有防重复检查）
+        # 使用 try-except 捕获可能的唯一约束冲突
+        try:
+            detail = self.bill_detail_service.createBillDetail(
+                room_id=room.id,
+                ac_mode=mode,
+                fan_speed=room.fan_speed,
+                start_time=room.serving_start_time,
+                end_time=end_time,
+                rate=rate,
+                cost=cost,
+                customer_id=customer_id,
+                detail_type="AC"
+            )
+            print(f"[Scheduler] 结算 AC费 Room {room.id}: {cost:.2f}元, detail_id={detail.id}")
+        except Exception as e:
+            # 如果创建失败（可能是并发冲突），再次检查是否已存在
+            db.session.rollback()
+            db.session.expire_all()
+            existing_detail = DetailRecord.query.filter(
+                DetailRecord.room_id == room.id,
+                DetailRecord.detail_type == "AC",
+                DetailRecord.start_time == room.serving_start_time
+            ).first()
+            if existing_detail:
+                print(f"[Settle Conflict Resolved] Room {room.id}, start={room.serving_start_time}, reason={reason}, using existing_id={existing_detail.id}")
+                return
+            else:
+                # 如果确实不存在，重新抛出异常
+                print(f"[Settle Error] Room {room.id}, start={room.serving_start_time}, reason={reason}, error={e}")
+                raise
 
     # --- 状态迁移 ---
 
@@ -199,8 +256,34 @@ class Scheduler:
         if not room: return
         now = clock.now()
         
+        # 检查是否已经有计费字段，如果没有则跳过结算
+        if not room.serving_start_time or room.billing_start_temp is None:
+            # 没有计费字段，直接移除队列
+            self._remove_request(self.serving_queue, request.roomId)
+            self._remove_request(self.waiting_queue, request.roomId)
+            request.servingTime = None
+            request.waitingTime = now
+            self.waiting_queue.append(request)
+            from ..extensions import db
+            db.session.query(Room).filter(Room.id == room.id).update({
+                "waiting_start_time": now
+            })
+            db.session.commit()
+            return
+        
         self._updateRoomTemperature(room, force_update=True)
         self._settle_current_service_period(room, now, reason)
+        
+        # 立即清除计费字段，防止重复结算
+        from ..extensions import db
+        db.session.query(Room).filter(Room.id == room.id).update({
+            "serving_start_time": None,
+            "billing_start_temp": None,
+        })
+        db.session.commit()
+        # 同步内存
+        room.serving_start_time = None
+        room.billing_start_temp = None
 
         self._remove_request(self.serving_queue, request.roomId)
         self._remove_request(self.waiting_queue, request.roomId)
@@ -209,16 +292,10 @@ class Scheduler:
         request.waitingTime = now
         self.waiting_queue.append(request)
 
-        from ..extensions import db
         db.session.query(Room).filter(Room.id == room.id).update({
-            "serving_start_time": None,
-            "billing_start_temp": None,
             "waiting_start_time": now
         })
         db.session.commit()
-        # 同步内存
-        room.serving_start_time = None
-        room.billing_start_temp = None
 
     def _promote_waiting_room(self, request: RoomRequest) -> None:
         room = self.room_service.getRoomById(request.roomId)
@@ -246,24 +323,66 @@ class Scheduler:
         room.billing_start_temp = start_temp
 
     def _handle_temp_reached(self, room: Room, current_temp: float):
+        # 使用数据库原子更新来设置 cooling_paused 标志，防止并发重复调用
+        # 如果更新影响的行数为0，说明已经被其他线程设置过了，直接返回
+        from ..extensions import db
+        db.session.refresh(room)  # 强制刷新，读取最新状态
+        
+        # 检查是否已经有计费字段，如果没有则说明已经被其他操作（如 ChangeSpeed）处理过了
+        if not room.serving_start_time or room.billing_start_temp is None:
+            print(f"[Skip Temp Reached] Room {room.id} 没有计费字段，可能已被其他操作处理")
+            # 即使没有计费字段，也要设置 cooling_paused 标志
+            db.session.query(Room).filter(Room.id == room.id).update({
+                "cooling_paused": True,
+            })
+            db.session.commit()
+            room.cooling_paused = True
+            return
+        
+        # 使用原子更新：只有当 cooling_paused 为 False 时才更新
+        result = db.session.query(Room).filter(
+            Room.id == room.id,
+            Room.cooling_paused == False
+        ).update({
+            "cooling_paused": True,
+        }, synchronize_session=False)
+        db.session.commit()
+        
+        # 如果更新失败（result == 0），说明已经被其他线程处理过了
+        if result == 0:
+            print(f"[Skip Temp Reached] Room {room.id} 已经被处理过（cooling_paused=True）")
+            return
+        
+        # 同步内存对象
+        room.cooling_paused = True
+        
         now = clock.now()
-        if room.serving_start_time:
+        # 再次检查计费字段（可能在设置标志的过程中被其他操作清除了）
+        db.session.refresh(room)
+        if room.serving_start_time and room.billing_start_temp is not None:
+            # 结算当前服务周期的费用
             self._settle_current_service_period(room, now, "TEMP_REACHED")
+            
+            # 立即清除计费字段，防止重复结算
+            db.session.query(Room).filter(Room.id == room.id).update({
+                "serving_start_time": None,
+                "billing_start_temp": None,
+            })
+            db.session.commit()
+            # 同步内存对象
+            room.serving_start_time = None
+            room.billing_start_temp = None
         
         self._remove_request(self.serving_queue, room.id)
         self._remove_request(self.waiting_queue, room.id)
         
-        from ..extensions import db
+        # 更新其他状态
         db.session.query(Room).filter(Room.id == room.id).update({
-            "cooling_paused": True,
             "pause_start_temp": current_temp,
-            "serving_start_time": None,
-            "waiting_start_time": None,
-            "billing_start_temp": None
+            "waiting_start_time": None
         })
         db.session.commit()
-        room.serving_start_time = None
-        room.billing_start_temp = None
+        room.pause_start_temp = current_temp
         room.cooling_paused = True
         self._schedule_queues(force=False)
 
@@ -430,13 +549,25 @@ class Scheduler:
             self._updateRoomTemperature(room, force_update=True)
             self._settle_current_service_period(room, now, "POWER_OFF")
             
-            # 2. 移除队列
+            # 2. 立即清除计费相关字段并设置 ac_on=False，防止 RequestState 重复计算 pending 费用
+            # 必须在数据库提交前清除，确保后续查询不会计算 pending 费用
+            from ..extensions import db
+            db.session.query(Room).filter(Room.id == room.id).update({
+                "ac_on": False,  # 立即设置为 False，防止 RequestState 计算 pending 费用
+                "serving_start_time": None,
+                "billing_start_temp": None,
+            })
+            db.session.commit()
+            # 同步内存对象
+            room.ac_on = False
+            room.serving_start_time = None
+            room.billing_start_temp = None
+            
+            # 3. 移除队列
             self._remove_request(self.serving_queue, room.id)
             self._remove_request(self.waiting_queue, room.id)
             
-            # 3. 关机重置状态：重置温度、风速到默认值
-            from ..extensions import db
-            
+            # 4. 关机重置状态：重置温度、风速到默认值
             # 决定重置的默认值
             mode = (room.ac_mode or "COOLING").upper()
             default_target = 22.0 if mode == "HEATING" else 25.0  # 目标温度默认值
@@ -445,11 +576,8 @@ class Scheduler:
             default_current_temp = float(room.default_temp) if room.default_temp is not None else 25.0
 
             db.session.query(Room).filter(Room.id == room.id).update({
-                "ac_on": False, 
                 "ac_session_start": None, 
-                "serving_start_time": None,
                 "waiting_start_time": None, 
-                "billing_start_temp": None,
                 "cooling_paused": False, 
                 "pause_start_temp": None,
                 # === 重置温度和风速到默认值 ===
@@ -460,8 +588,7 @@ class Scheduler:
             })
             db.session.commit()
             
-            # 同步内存对象
-            room.ac_on = False
+            # 同步内存对象（ac_on 已在前面设置）
             room.current_temp = default_current_temp
             room.target_temp = default_target
             room.fan_speed = default_speed
@@ -521,16 +648,50 @@ class Scheduler:
             if room.fan_speed == new_speed: return "未变"
             now = clock.now()
             
-            if room.serving_start_time:
+            # 保存旧的计费起点，用于结算
+            old_serving_start_time = room.serving_start_time
+            old_billing_start_temp = room.billing_start_temp
+            
+            if old_serving_start_time and old_billing_start_temp is not None:
                 self._updateRoomTemperature(room, force_update=True)
+                # 确保使用旧的计费起点进行结算
+                room.serving_start_time = old_serving_start_time
+                room.billing_start_temp = old_billing_start_temp
                 self._settle_current_service_period(room, now, "CHANGE_SPEED")
-                self._mark_serving_db(room.id, now, room.current_temp)
+                
+                # 立即清除计费字段，防止重复结算
+                # 同时设置 cooling_paused，防止温度达到目标时再次结算
+                db.session.query(Room).filter(Room.id == room.id).update({
+                    "serving_start_time": None,
+                    "billing_start_temp": None,
+                    "cooling_paused": True,  # 防止温度达到目标时再次结算
+                })
+                db.session.commit()
+                # 同步内存对象
+                room.serving_start_time = None
+                room.billing_start_temp = None
+                room.cooling_paused = True
 
             from ..extensions import db
             db.session.query(Room).filter(Room.id == room.id).update({"fan_speed": new_speed})
             db.session.commit()
             room.fan_speed = new_speed
+            
+            # 调用 _add_request_to_queue，它会重新设置计费起点（如果需要）
+            # 注意：如果房间已经在 serving_queue 中，_add_request_to_queue 会重新设置 serving_start_time
+            # 但此时 cooling_paused 已经是 True，所以 _updateRoomTemperature 不会触发 _handle_temp_reached
             self._add_request_to_queue(room)
+            
+            # 如果房间重新进入服务队列，需要清除 cooling_paused 标志
+            db.session.refresh(room)
+            if room.serving_start_time is not None:
+                # 房间重新开始服务，清除 cooling_paused 标志
+                db.session.query(Room).filter(Room.id == room.id).update({
+                    "cooling_paused": False,
+                })
+                db.session.commit()
+                room.cooling_paused = False
+            
             return "风速已调整"
 
     def ChangeMode(self, RoomId: int, Mode: str) -> str:
@@ -544,9 +705,21 @@ class Scheduler:
             if new_mode == room.ac_mode: return "未变"
             now = clock.now()
             
-            if room.serving_start_time:
+            if room.serving_start_time and room.billing_start_temp is not None:
                 self._updateRoomTemperature(room, force_update=True)
                 self._settle_current_service_period(room, now, "CHANGE_MODE")
+                
+                # 立即清除计费字段，防止重复结算
+                db.session.query(Room).filter(Room.id == room.id).update({
+                    "serving_start_time": None,
+                    "billing_start_temp": None,
+                })
+                db.session.commit()
+                # 同步内存对象
+                room.serving_start_time = None
+                room.billing_start_temp = None
+                
+                # 重新设置计费起点
                 self._mark_serving_db(room.id, now, room.current_temp)
 
             default_target = 22.0 if new_mode == "HEATING" else 25.0
@@ -581,6 +754,9 @@ class Scheduler:
         if not room: return {}
         
         from ..extensions import db
+        # 强制刷新 room 对象，确保读取到最新的数据库状态
+        # 这很重要，特别是在 PowerOff 后立即查询时
+        db.session.refresh(room)
         
         # 1. 计算房费（ROOM_FEE 类型的账单总和）
         room_fee = db.session.query(func.sum(DetailRecord.cost))\

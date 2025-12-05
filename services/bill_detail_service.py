@@ -20,6 +20,21 @@ class BillDetailService:
         customer_id: int | None = None,
         detail_type: str = "AC",
     ) -> DetailRecord:
+        # === 防重复检查：在添加之前再次检查是否存在 ===
+        # 这可以防止并发调用时创建重复记录
+        # 强制刷新数据库会话，确保查询到最新提交的数据
+        from ..extensions import db
+        db.session.expire_all()
+        existing = DetailRecord.query.filter(
+            DetailRecord.room_id == room_id,
+            DetailRecord.detail_type == detail_type,
+            DetailRecord.start_time == start_time
+        ).first()
+        
+        if existing:
+            print(f"[BillDetailService] 发现已存在的详单，Room {room_id}, start_time={start_time}, existing_id={existing.id}, 跳过创建")
+            return existing
+        
         factor = current_app.config.get("TIME_ACCELERATION_FACTOR", 1.0)
         try:
             factor = float(factor)
@@ -28,7 +43,7 @@ class BillDetailService:
         factor = factor if factor > 0 else 1.0
 
         scaled_duration = max(
-            1, int(((end_time - start_time).total_seconds() / 60.0) * factor)
+            0, int(((end_time - start_time).total_seconds() / 60.0) * factor)
         )
 
         detail = DetailRecord(
