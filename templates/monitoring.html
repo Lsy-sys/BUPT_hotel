@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>监控端 - Hotel Monitoring</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/reception.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/manager.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/monitoring.css') }}">
+</head>
+<body>
+    <div class="dashboard-container">
+        <aside class="sidebar">
+            <div class="logo"><i class="fa-solid fa-layer-group"></i> <span>Master OS</span></div>
+            <nav class="nav-menu">
+                <a href="/" class="nav-item"><i class="fa-solid fa-house"></i> 首页</a>
+                <a href="/manager" class="nav-item"><i class="fa-solid fa-gamepad"></i> 管理端</a>
+                <a href="/manager/monitoring" class="nav-item active"><i class="fa-solid fa-desktop"></i> 监控端</a>
+                <a href="/manager/report" class="nav-item"><i class="fa-solid fa-chart-pie"></i> 报表中心</a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <!-- 重置按钮（调试用） -->
+            <button id="reset-db-btn" class="btn btn-danger btn-sm" style="position: fixed; bottom: 20px; right: 20px; z-index: 1000;" onclick="resetDatabase()" title="重置数据库">
+                <i class="fa-solid fa-trash-can"></i> 重置数据库
+            </button>
+
+            <div class="monitor-header">
+                <div class="header-left">
+                    <h2><i class="fa-solid fa-chart-line"></i> 房间监控中心</h2>
+                    <p>实时监控所有房间状态、温度和费用信息</p>
+                </div>
+                <div class="header-right">
+                    <button class="btn-export" onclick="exportMonitoringDetails()">
+                        <i class="fa-solid fa-file-csv"></i> 导出详单
+                    </button>
+                    <div class="status-indicator">
+                        <span class="live-dot"></span>
+                        <span>实时监控中</span>
+                    </div>
+                    <div class="last-update">
+                        <small>最后更新: <span id="last-update-time">-</span></small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 队列监控面板 -->
+            <div class="monitor-panel queue-monitor-panel">
+                <div class="panel-header">
+                    <div class="ph-left">
+                        <h3><i class="fa-solid fa-stream"></i> 队列状态监控</h3>
+                    </div>
+                </div>
+
+                <div class="queue-container">
+                    <div class="queue-box serving-box">
+                        <div class="q-title text-success">
+                            <span><i class="fa-solid fa-fan fa-spin"></i> 服务队列 (Running)</span>
+                            <span class="count-badge bg-success" id="serving-count">0</span>
+                        </div>
+                        <div class="q-list" id="serving-list">
+                            <div style="color:#bdc3c7;font-size:0.8rem;">空闲</div>
+                        </div>
+                    </div>
+
+                    <div class="flow-icon">
+                        <i class="fa-solid fa-arrow-right-arrow-left"></i>
+                    </div>
+
+                    <div class="queue-box waiting-box">
+                        <div class="q-title text-warning">
+                            <span><i class="fa-solid fa-clock"></i> 等待队列 (Pending)</span>
+                            <span class="count-badge bg-warning text-dark" id="waiting-count">0</span>
+                        </div>
+                        <div class="q-list" id="waiting-list">
+                            <div style="color:#bdc3c7;font-size:0.8rem;">无等待</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="rooms-monitoring-grid" id="rooms-grid">
+                <!-- 房间卡片将在这里动态生成 -->
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="{{ url_for('static', filename='js/monitoring.js') }}"></script>
+    <script src="https://cdn.jsdelivr.net/npm/particles.js@2.0.0/particles.min.js"></script>
+    <script src="{{ url_for('static', filename='js/bg-particles.js') }}"></script>
+</body>
+</html>

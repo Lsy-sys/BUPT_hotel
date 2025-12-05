@@ -1,0 +1,393 @@
+/* 监控页面样式 */
+
+.monitor-header {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+    padding: 25px;
+    margin-bottom: 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.monitor-header .header-left h2 {
+    margin: 0 0 5px 0;
+    color: #2c3e50;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.monitor-header .header-left p {
+    margin: 0;
+    color: #7f8c8d;
+    font-size: 0.9rem;
+}
+
+.monitor-header .header-right {
+    text-align: right;
+}
+
+.status-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 5px;
+    font-size: 0.9rem;
+    color: #27ae60;
+    font-weight: 500;
+}
+
+.live-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: #e74c3c;
+    border-radius: 50%;
+    margin-right: 8px;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    50% { opacity: 0.4; }
+}
+
+.last-update {
+    color: #95a5a6;
+    font-size: 0.8rem;
+}
+
+.btn-export {
+    background: #27ae60;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 20px;
+    transition: all 0.2s;
+}
+
+.btn-export:hover {
+    background: #2ecc71;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(39, 174, 96, 0.3);
+}
+
+.btn-export:active {
+    transform: translateY(0);
+}
+
+/* 房间监控网格 */
+.rooms-monitoring-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(300px, 1fr));
+    gap: 15px;
+    padding-bottom: 50px;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+/* 第一排：房间1和房间2，分别放在第1列和第2列（左对齐） */
+.rooms-monitoring-grid .room-monitor-card:nth-child(1) {
+    grid-column: 1 / 2;
+}
+
+.rooms-monitoring-grid .room-monitor-card:nth-child(2) {
+    grid-column: 2 / 3;
+}
+
+/* 第二排：房间3,4,5，占满三列 */
+.rooms-monitoring-grid .room-monitor-card:nth-child(3) {
+    grid-column: 1 / 2;
+}
+
+.rooms-monitoring-grid .room-monitor-card:nth-child(4) {
+    grid-column: 2 / 3;
+}
+
+.rooms-monitoring-grid .room-monitor-card:nth-child(5) {
+    grid-column: 3 / 4;
+}
+
+/* 房间卡片 */
+.room-monitor-card {
+    background: white;
+    border-radius: 15px;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.08);
+    padding: 20px;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.room-monitor-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+
+.room-monitor-card.ac-on {
+    border-color: #27ae60;
+}
+
+.room-monitor-card.ac-off {
+    border-color: #95a5a6;
+}
+
+/* 房间卡片头部 */
+.room-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f1f2f6;
+}
+
+.room-number {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.room-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-badge.ac-on {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-badge.ac-off {
+    background: #f8f9fa;
+    color: #6c757d;
+}
+
+.status-badge.serving {
+    background: #d1ecf1;
+    color: #0c5460;
+}
+
+.status-badge.waiting {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-badge.paused {
+    background: #e2e3e5;
+    color: #383d41;
+}
+
+/* 房间卡片内容 */
+.room-card-content {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+/* 温度信息 */
+.temp-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.temp-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.temp-label {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+    font-weight: 500;
+}
+
+.temp-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.temp-value.current {
+    color: #e74c3c;
+    font-size: 1rem;
+}
+
+.temp-value.target {
+    color: #27ae60;
+}
+
+/* 空调设置 */
+.ac-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.setting-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.setting-label {
+    font-size: 0.85rem;
+    color: #7f8c8d;
+    font-weight: 500;
+}
+
+.setting-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+/* 费用信息 */
+.room-card-footer {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #f1f2f6;
+}
+
+.fee-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+}
+
+.fee-item {
+    text-align: center;
+}
+
+.fee-label {
+    font-size: 0.8rem;
+    color: #7f8c8d;
+    margin-bottom: 2px;
+    font-weight: 500;
+}
+
+.fee-value {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #e74c3c;
+}
+
+.fee-value.total {
+    color: #27ae60;
+}
+
+.schedule-count {
+    grid-column: 1 / -1;
+    text-align: center;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #f8f9fa;
+}
+
+.schedule-count .fee-label {
+    margin-bottom: 0;
+}
+
+.schedule-count .fee-value {
+    color: #6c757d;
+    font-size: 0.9rem;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .rooms-monitoring-grid {
+        grid-template-columns: 1fr;
+        max-width: 100%;
+    }
+
+    .rooms-monitoring-grid .room-monitor-card {
+        grid-column: auto !important;
+    }
+
+    .monitor-header {
+        flex-direction: column;
+        gap: 15px;
+        text-align: center;
+    }
+
+    .room-card-content {
+        grid-template-columns: 1fr;
+    }
+
+    .fee-info {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* 队列监控面板 */
+.queue-monitor-panel {
+    margin-bottom: 25px;
+}
+
+.queue-monitor-panel .panel-header {
+    margin-bottom: 20px;
+}
+
+.queue-monitor-panel .panel-header h3 {
+    margin: 0;
+    color: #2c3e50;
+    font-size: 1.3rem;
+    font-weight: 600;
+}
+
+.queue-monitor-panel .panel-header .fa-stream {
+    margin-right: 10px;
+    color: #3498db;
+}
+
+/* 加载状态 */
+.room-card-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 200px;
+    color: #95a5a6;
+}
+
+.room-card-loading i {
+    font-size: 2rem;
+    margin-right: 10px;
+}
+
+/* 错误状态 */
+.room-card-error {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 200px;
+    color: #e74c3c;
+}
+
+.room-card-error i {
+    font-size: 2rem;
+    margin-bottom: 10px;
+}
+
+.room-card-error .error-message {
+    text-align: center;
+    font-size: 0.9rem;
+}
