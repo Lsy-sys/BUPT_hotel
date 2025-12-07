@@ -63,7 +63,7 @@ class Scheduler:
         """获取单位温差的费率。当前逻辑下，1度温差=1元，不随风速变化。"""
         return 1.0
 
-    # --- 核心逻辑: 温度更新 ---
+    # --- 核心逻辑: 温度更新 (修正版) ---
 
     def _updateRoomTemperature(self, room: Room, force_update: bool = False) -> None:
         now = clock.now()
@@ -75,6 +75,7 @@ class Scheduler:
             return
 
         sim_minutes = self._get_simulated_duration(room.last_temp_update, now) / 60.0
+        # 如果时间极短且非强制更新，跳过计算
         if sim_minutes <= 0 and not force_update: return
 
         current_temp = float(room.current_temp or 25.0)
@@ -83,61 +84,165 @@ class Scheduler:
         fan_speed = (room.fan_speed or "MEDIUM").upper()
         mode = (room.ac_mode or "COOLING").upper()
 
+        # 1. 判定是否拥有服务权
         is_serving = any(r.roomId == room.id for r in self.serving_queue)
-        # 补救措施：如果数据库显示在服务但队列里没有(极端情况)，视为服务中
         if not is_serving and room.serving_start_time and not room.cooling_paused:
             is_serving = True
 
+        # 2. 判定是否需要"主动工作" (Active Work)
+        # 只有在服务队列中，且温度不满足目标（制冷时当前>目标，制热时当前<目标）时，才算主动工作
+        is_working = False
+        if is_serving:
+            if mode == "COOLING" and current_temp > target_temp:
+                is_working = True
+            elif mode == "HEATING" and current_temp < target_temp:
+                is_working = True
+
         new_temp = current_temp
         
-        if is_serving:
+        if is_working:
+            # === 主动制冷/制热逻辑 ===
             # 变温速率: High=1.0, Medium=0.5, Low=0.33
             rate_map = {"HIGH": 1.0, "MEDIUM": 0.5, "LOW": 1.0/3.0}
             rate = rate_map.get(fan_speed, 0.5)
             delta = rate * sim_minutes
 
             if mode == "COOLING":
-                if current_temp > target_temp:
-                    new_temp = max(target_temp, current_temp - delta)
-            else: # HEATING
-                if current_temp < target_temp:
-                    new_temp = min(target_temp, current_temp + delta)
+                # 制冷：降温
+                new_temp = max(target_temp, current_temp - delta)
+            else: 
+                # 制热：升温
+                new_temp = min(target_temp, current_temp + delta)
             
             # 到达目标温度检查
             if abs(new_temp - target_temp) < 0.01:
                 new_temp = target_temp
                 if not force_update:
-                    # 在调用 _handle_temp_reached 之前，先检查是否已经处理过
-                    # 强制刷新 room 对象，确保读取最新的 cooling_paused 状态
                     from ..extensions import db
                     db.session.refresh(room)
                     if not room.cooling_paused:
                         self._handle_temp_reached(room, new_temp)
         else:
-            # 回温速率
-            rewarm_rate = 0.5
+            # === 回温/自然漂移逻辑 ===
+            # 进入此逻辑的情况：
+            # 1. 房间不在服务队列 (Waiting 或 Paused)
+            # 2. 房间在服务队列，但温度已经优于目标 (例如制冷设置26度，当前24度)，此时应自然回暖
+            
+            # 如果房间在服务队列中但温度已达标，需要从队列中移除，进入回温待机状态
+            # 注意：如果 cooling_paused 已经为 True，说明已经被 _handle_temp_reached 处理过了，不应该重复结算
+            if is_serving and not force_update and not room.cooling_paused:
+                # 房间在服务队列中但温度已达标，应该移除并进入回温待机
+                from ..extensions import db
+                db.session.refresh(room)
+                
+                # 再次检查 cooling_paused（可能在刷新后已经设置了）
+                if room.cooling_paused:
+                    # 已经被处理过了，只需要从队列中移除
+                    self._remove_request(self.serving_queue, room.id)
+                    self._remove_request(self.waiting_queue, room.id)
+                    is_serving = False
+                elif room.serving_start_time and room.billing_start_temp is not None:
+                    # 如果有计费字段，先检查是否已经结算过（防止重复结算）
+                    from ..models import DetailRecord
+                    db.session.expire_all()
+                    existing_detail = db.session.query(DetailRecord.id).filter(
+                        DetailRecord.room_id == room.id,
+                        DetailRecord.detail_type == "AC",
+                        DetailRecord.start_time == room.serving_start_time
+                    ).first()
+                    
+                    if existing_detail:
+                        # 已经结算过了，只需要清除计费字段和移除队列
+                        print(f"[Skip Duplicate Settle] Room {room.id}, start={room.serving_start_time}, reason=TEMP_REACHED_AUTO, existing_id={existing_detail}")
+                        db.session.query(Room).filter(Room.id == room.id).update({
+                            "serving_start_time": None,
+                            "billing_start_temp": None,
+                        })
+                        db.session.commit()
+                        room.serving_start_time = None
+                        room.billing_start_temp = None
+                    else:
+                        # 先保存计费字段，避免在结算过程中被清除
+                        saved_serving_start_time = room.serving_start_time
+                        saved_billing_start_temp = room.billing_start_temp
+                        
+                        # 临时保存当前温度
+                        original_current_temp = room.current_temp
+                        # 如果温度已达标，使用目标温度作为结算终点
+                        if mode == "COOLING" and current_temp < target_temp:
+                            # 制冷模式，当前温度低于目标，只结算到目标温度
+                            room.current_temp = target_temp
+                        elif mode == "HEATING" and current_temp > target_temp:
+                            # 制热模式，当前温度高于目标，只结算到目标温度
+                            room.current_temp = target_temp
+                        
+                        # 结算到目标温度的费用
+                        self._settle_current_service_period(room, now, "TEMP_REACHED_AUTO")
+                        
+                        # 恢复当前温度
+                        room.current_temp = original_current_temp
+                        
+                        # 立即清除计费字段，防止重复结算
+                        db.session.query(Room).filter(Room.id == room.id).update({
+                            "serving_start_time": None,
+                            "billing_start_temp": None,
+                            "current_temp": original_current_temp  # 恢复当前温度
+                        })
+                        db.session.commit()
+                        room.serving_start_time = None
+                        room.billing_start_temp = None
+                    
+                    # 从服务队列中移除
+                    self._remove_request(self.serving_queue, room.id)
+                    self._remove_request(self.waiting_queue, room.id)
+                    
+                    # 设置暂停状态，进入回温待机
+                    db.session.query(Room).filter(Room.id == room.id).update({
+                        "cooling_paused": True,
+                        "pause_start_temp": current_temp,
+                        "waiting_start_time": None
+                    })
+                    db.session.commit()
+                    room.cooling_paused = True
+                    room.pause_start_temp = current_temp
+                    is_serving = False  # 更新标志，后续不再检查唤醒
+            
+            rewarm_rate = 0.5 # 回温速率
             delta = rewarm_rate * sim_minutes
+            
+            # 向 default_temp 靠拢
             if current_temp < default_temp:
                 new_temp = min(default_temp, current_temp + delta)
             elif current_temp > default_temp:
                 new_temp = max(default_temp, current_temp - delta)
             
-            # 回温唤醒检查
-            if room.cooling_paused and not force_update:
+            # 回温唤醒检查 (仅针对被暂停的房间，且不在服务队列中)
+            # 当回温导致温度再次劣于目标时，下一次循环会自动进入 is_working 分支
+            if not is_serving and room.cooling_paused and not force_update:
                 pause_base = room.pause_start_temp if room.pause_start_temp is not None else target_temp
+                # 触发唤醒阈值：偏离1度
                 if abs(new_temp - pause_base) >= 1.0:
                     self._handle_rewarm_wake(room)
 
         # 持久化
         from ..extensions import db
         try:
-            room.current_temp = new_temp
-            room.last_temp_update = now
-            db.session.query(Room).filter(Room.id == room.id).update({
-                "current_temp": new_temp,
-                "last_temp_update": now
-            })
-            db.session.commit()
+            # 只有温度发生实质变化时才写入，减少数据库压力
+            if abs(new_temp - float(room.current_temp or 0)) > 0.0001:
+                room.current_temp = new_temp
+                room.last_temp_update = now
+                db.session.query(Room).filter(Room.id == room.id).update({
+                    "current_temp": new_temp,
+                    "last_temp_update": now
+                })
+                db.session.commit()
+            else:
+                # 即使温度没变，也要更新时间，否则下次计算 sim_minutes 会累积过大
+                room.last_temp_update = now
+                db.session.query(Room).filter(Room.id == room.id).update({
+                    "last_temp_update": now
+                })
+                db.session.commit()
         except Exception:
             db.session.rollback()
 
@@ -331,12 +436,18 @@ class Scheduler:
         # 检查是否已经有计费字段，如果没有则说明已经被其他操作（如 ChangeSpeed）处理过了
         if not room.serving_start_time or room.billing_start_temp is None:
             print(f"[Skip Temp Reached] Room {room.id} 没有计费字段，可能已被其他操作处理")
-            # 即使没有计费字段，也要设置 cooling_paused 标志
+            # 即使没有计费字段，也要设置 cooling_paused 标志并移除队列
             db.session.query(Room).filter(Room.id == room.id).update({
                 "cooling_paused": True,
+                "pause_start_temp": current_temp,
+                "waiting_start_time": None
             })
             db.session.commit()
             room.cooling_paused = True
+            room.pause_start_temp = current_temp
+            # 从队列中移除
+            self._remove_request(self.serving_queue, room.id)
+            self._remove_request(self.waiting_queue, room.id)
             return
         
         # 使用原子更新：只有当 cooling_paused 为 False 时才更新
@@ -400,7 +511,7 @@ class Scheduler:
 
     def _schedule_queues(self, force: bool = False):
         """
-        统一调度入口：容量填充 + 等待超时轮转。
+        统一调度入口：容量填充 + 优先级抢占 + 等待超时轮转。
         """
         capacity = self._capacity()
         time_slice = self._time_slice()
@@ -412,7 +523,36 @@ class Scheduler:
             candidate = self.waiting_queue[0]
             self._promote_waiting_room(candidate)
 
-        # 2) 时间片轮转：等待超时的请求尝试踢掉服务时间最长且风速不高于自己的服务者
+        # 2) 优先级抢占：等待队列中的高优先级房间抢占服务队列中的低优先级房间
+        # 使用循环处理多次抢占，直到没有更多抢占机会
+        max_preemption_rounds = 10  # 防止无限循环
+        preemption_round = 0
+        while self.waiting_queue and len(self.serving_queue) >= capacity and preemption_round < max_preemption_rounds:
+            preemption_round += 1
+            # 找到等待队列中优先级最高的房间
+            self.waiting_queue.sort(key=lambda r: -self._speed_val(r.fanSpeed))
+            highest_waiting = self.waiting_queue[0]
+            waiting_speed = self._speed_val(highest_waiting.fanSpeed)
+            
+            # 找到服务队列中优先级最低的房间
+            serving_speeds = [self._speed_val(r.fanSpeed) for r in self.serving_queue]
+            min_serving_speed = min(serving_speeds)
+            
+            # 如果等待队列中的最高优先级 > 服务队列中的最低优先级，触发抢占
+            if waiting_speed > min_serving_speed:
+                # 找到服务队列中最低优先级中服务时间最长的房间
+                candidates = [r for r in self.serving_queue if self._speed_val(r.fanSpeed) == min_serving_speed]
+                candidates.sort(key=lambda r: -self._get_simulated_duration(r.servingTime, now))
+                victim = candidates[0]
+                print(f"[Schedule] 触发优先级抢占: Room {highest_waiting.roomId} ({highest_waiting.fanSpeed}) 抢占 Room {victim.roomId} ({victim.fanSpeed})")
+                self._demote_serving_room(victim, "PRIORITY_PREEMPTION")
+                self._promote_waiting_room(highest_waiting)
+                # 继续循环，检查是否还有更多抢占机会
+            else:
+                # 没有更多抢占机会，退出循环
+                break
+
+        # 3) 时间片轮转：等待超时的请求尝试踢掉服务时间最长且风速不高于自己的服务者
         if self.waiting_queue and len(self.serving_queue) >= capacity:
             timeout_candidates = []
             for req in self.waiting_queue:
@@ -570,7 +710,10 @@ class Scheduler:
             # 4. 关机重置状态：重置温度、风速到默认值
             # 决定重置的默认值
             mode = (room.ac_mode or "COOLING").upper()
-            default_target = 22.0 if mode == "HEATING" else 25.0  # 目标温度默认值
+            if mode == "HEATING":
+                default_target = current_app.config.get("HEATING_DEFAULT_TARGET", 23.0)
+            else:
+                default_target = current_app.config.get("COOLING_DEFAULT_TARGET", 25.0)
             default_speed = "MEDIUM"  # 风速默认值
             # 当前温度重置为房间的默认温度（如果房间有 default_temp，使用它；否则使用 25.0）
             default_current_temp = float(room.default_temp) if room.default_temp is not None else 25.0
@@ -661,16 +804,24 @@ class Scheduler:
                 
                 # 立即清除计费字段，防止重复结算
                 # 同时设置 cooling_paused，防止温度达到目标时再次结算
+                # 注意：这里先移除队列，然后 _add_request_to_queue 会重新加入（如果需要）
+                self._remove_request(self.serving_queue, room.id)
+                self._remove_request(self.waiting_queue, room.id)
+                
+                current_temp = float(room.current_temp or 25.0)
                 db.session.query(Room).filter(Room.id == room.id).update({
                     "serving_start_time": None,
                     "billing_start_temp": None,
                     "cooling_paused": True,  # 防止温度达到目标时再次结算
+                    "pause_start_temp": current_temp,
+                    "waiting_start_time": None
                 })
                 db.session.commit()
                 # 同步内存对象
                 room.serving_start_time = None
                 room.billing_start_temp = None
                 room.cooling_paused = True
+                room.pause_start_temp = current_temp
 
             from ..extensions import db
             db.session.query(Room).filter(Room.id == room.id).update({"fan_speed": new_speed})
@@ -722,7 +873,10 @@ class Scheduler:
                 # 重新设置计费起点
                 self._mark_serving_db(room.id, now, room.current_temp)
 
-            default_target = 22.0 if new_mode == "HEATING" else 25.0
+            if new_mode == "HEATING":
+                default_target = current_app.config.get("HEATING_DEFAULT_TARGET", 23.0)
+            else:
+                default_target = current_app.config.get("COOLING_DEFAULT_TARGET", 25.0)
             from ..extensions import db
             db.session.query(Room).filter(Room.id == room.id).update({"ac_mode": new_mode, "target_temp": default_target})
             db.session.commit()

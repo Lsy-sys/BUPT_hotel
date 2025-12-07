@@ -38,9 +38,9 @@ def seed_default_ac_config() -> None:
         ACConfig(
             id=2,
             mode="HEATING",
-            min_temp=20.0,
-            max_temp=30.0,
-            default_temp=26.0,
+            min_temp=18.0,
+            max_temp=25.0,
+            default_temp=23.0,
             rate=1.0,
             # 制热模式也使用相同的费率逻辑（与物理升温速度一致）
             low_speed_rate=0.333333,  # 对应 Low: 1分钟升1/3度，收1/3元
