@@ -30,7 +30,6 @@
           </div>
           <div class="room-cost">
             <span>¥{{ room.totalCost.toFixed(2) }}</span>
-            <span>{{ room.totalPowerConsumption.toFixed(2) }}度</span>
           </div>
         </div>
         <div v-else class="room-card-body off">

@@ -4,15 +4,6 @@
 import axios, { type AxiosInstance, type AxiosRequestConfig, type AxiosResponse } from 'axios';
 import { API_BASE_URL } from '../config';
 
-// 统一响应格式（后端实际格式）
-export interface ApiResponse<T = any> {
-  code: number; // 200 表示成功
-  message: string;
-  data: T;
-  timestamp?: number;
-  success?: boolean; // 可选，兼容旧格式
-}
-
 // 创建 axios 实例
 const instance: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -36,35 +27,47 @@ instance.interceptors.request.use(
 
 // 响应拦截器
 instance.interceptors.response.use(
-  (response: AxiosResponse<ApiResponse>) => {
+  (response: AxiosResponse<any>) => {
     const { data } = response;
 
-    // 统一处理响应 - 后端使用 code 字段判断成功（200 表示成功）
-    if (data.code === 200 || data.success) {
-      return data.data; // 直接返回 data 部分
-    } else {
-      console.error('API错误:', response.config.url, data.message);
-      return Promise.reject(new Error(data.message || '请求失败'));
+    // 后端多数直接返回业务对象或 { message: xxx } / { error: xxx }
+    if (data && typeof data === 'object') {
+      if ('error' in data) {
+        return Promise.reject(new Error((data as { error?: string }).error || '请求失败'));
+      }
+      if ('code' in data && (data as { code?: number }).code !== 200) {
+        const payload = data as { message?: string };
+        return Promise.reject(new Error(payload.message || '请求失败'));
+      }
+      // 如果包含 data 字段，返回内部 data，否则返回原始对象
+      if ('data' in data) {
+        return (data as { data: any }).data;
+      }
     }
+    return data;
   },
   (error) => {
     console.error('响应错误:', error);
 
     let message = '请求失败';
     if (error.response) {
-      // 服务器返回错误状态码
-      switch (error.response.status) {
-        case 400:
-          message = '请求参数错误';
-          break;
-        case 404:
-          message = '请求的资源不存在';
-          break;
-        case 500:
-          message = '服务器内部错误';
-          break;
-        default:
-          message = error.response.data?.message || '请求失败';
+      const respData = error.response.data || {};
+      if (typeof respData === 'object' && 'error' in respData) {
+        message = respData.error;
+      } else {
+        switch (error.response.status) {
+          case 400:
+            message = '请求参数错误';
+            break;
+          case 404:
+            message = '请求的资源不存在';
+            break;
+          case 500:
+            message = '服务器内部错误';
+            break;
+          default:
+            message = respData.message || '请求失败';
+        }
       }
     } else if (error.request) {
       // 请求已发送但没有收到响应

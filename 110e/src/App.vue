@@ -23,7 +23,8 @@ const {
   waitingQueue,
   allBills,
   occupiedRooms,
-  checkInRecords
+  checkInRecords,
+  availableRooms
 } = useHvacService();
 
 // 刷新处理
@@ -51,7 +52,7 @@ const handleRefresh = () => {
     :refresh-key="refreshKey"
     :service-queue="serviceQueue"
     :waiting-queue="waitingQueue"
-    :available-rooms="ROOM_IDS"
+    :available-rooms="availableRooms"
     :check-in-records="checkInRecords"
     :all-bills="allBills"
     @refresh="handleRefresh"

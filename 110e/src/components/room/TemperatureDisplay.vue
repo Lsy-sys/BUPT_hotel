@@ -33,36 +33,38 @@ const displayTemp = computed(() => {
 <style scoped>
 .current-temp-display {
   text-align: center;
-  padding: 40px 30px;
+  padding: 50px 30px;
   border-radius: 16px;
-  text-align: center;
   border: 2px solid #e2e8f0;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   transition: all 0.3s ease;
 }
 
-.temperature-display:hover {
+.current-temp-display:hover {
   border-color: #067ef5;
   box-shadow: 0 6px 16px rgba(6, 126, 245, 0.15);
   transform: translateY(-2px);
 }
 
-.temp-value {
-  font-size: 52px;
+.temp-value-large {
+  font-size: 72px;
   font-weight: 800;
   background: linear-gradient(135deg, #067ef5 0%, #0369a1 100%);
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  margin-bottom: 12px;
-  line-height: 1.2;
+  margin-bottom: 16px;
+  line-height: 1.1;
+  letter-spacing: -2px;
 }
 
 .temp-label-large {
-  font-size: 14px;
+  font-size: 15px;
   color: #64748b;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   font-weight: 500;
+  letter-spacing: 0.5px;
 }
 
 .status-badge {
@@ -108,8 +110,8 @@ const displayTemp = computed(() => {
 }
 
 @media (max-width: 768px) {
-  .temp-value {
-    font-size: 40px;
+  .temp-value-large {
+    font-size: 56px;
   }
 }
 </style>

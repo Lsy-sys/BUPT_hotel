@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
@@ -10,11 +9,13 @@ export default defineConfig({
     host: '0.0.0.0', // 允许局域网访问
     proxy: {
       '/api': {
-        // 后端服务端口 8000
-        target: 'http://127.0.0.1:8000',
+        // 代理到本地后端服务
+        // 如果需要代理到其他机器，修改 target 为对应的地址
+        // 例如：target: 'http://192.168.1.100:8080'
+        target: 'http://localhost:8000',
         changeOrigin: true,
-        // 去掉前缀 /api，直接透传给后端
-        rewrite: (path: string) => path.replace(/^\/api/, '')
+        // 后端没有 /api 前缀，转发时需要去掉 /api
+        rewrite: (path) => path.replace(/^\/api/, '')
       }
     }
   }

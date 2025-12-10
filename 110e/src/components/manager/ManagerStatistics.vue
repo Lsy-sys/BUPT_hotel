@@ -28,9 +28,8 @@
       <StatisticsOverview
         :total-rooms="report.totalRooms"
         :total-requests="report.totalServiceRequests"
-        :total-power="report.totalPowerConsumption"
+        :total-duration="totalServiceDuration"
         :total-cost="report.totalCost"
-        :avg-cost="report.averageCostPerRoom"
       />
 
       <!-- 风速使用分布 -->
@@ -64,7 +63,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import type { StatisticsReport } from '../../types/index';
 import TimeRangeSelector from './TimeRangeSelector.vue';
 import StatisticsOverview from './StatisticsOverview.vue';
@@ -79,6 +78,12 @@ const props = defineProps<{
 const startTimeInput = ref('');
 const endTimeInput = ref('');
 const report = ref<StatisticsReport | null>(null);
+
+// 计算总服务时长（从房间统计中累加）
+const totalServiceDuration = computed(() => {
+  if (!report.value || !report.value.roomStatistics) return 0;
+  return report.value.roomStatistics.reduce((sum, stat) => sum + (stat.totalServiceDuration || 0), 0);
+});
 
 const selectToday = () => {
   const now = new Date();
@@ -153,61 +158,210 @@ const printReport = () => {
 
 const generatePrintHTML = (rep: StatisticsReport): string => {
   const getFanSpeedText = (speed: string) => {
-    const map: Record<string, string> = { low: '低风', medium: '中风', high: '高风' };
+    const map: Record<string, string> = { low: '低风', medium: '中风', high: '高风', LOW: '低风', MEDIUM: '中风', HIGH: '高风' };
     return map[speed] || '未知';
   };
+
+  // 格式化时长
+  const formatDurationPrint = (seconds: number): string => {
+    if (!seconds || seconds === 0) return '0秒';
+    if (seconds < 60) return `${seconds}秒`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}分${seconds % 60}秒`;
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    return `${hours}时${mins}分`;
+  };
+
+  // 计算总服务时长
+  const totalDuration = rep.roomStatistics.reduce((sum, stat) => sum + (stat.totalServiceDuration || 0), 0);
+
+  // 计算平均费用/房间
+  const avgCostPerRoom = rep.totalRooms > 0 ? rep.totalCost / rep.totalRooms : 0;
 
   return `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="UTF-8">
-      <title>统计报表</title>
+      <title>空调系统统计报表</title>
       <style>
-        body { font-family: 'Microsoft YaHei', sans-serif; padding: 20px; max-width: 1000px; margin: 0 auto; }
-        .header { text-align: center; border-bottom: 3px solid #333; padding-bottom: 15px; margin-bottom: 30px; }
-        .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px; }
-        .summary-item { padding: 15px; background: #f5f5f5; border-radius: 8px; text-align: center; }
-        .summary-item .value { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
-        .summary-item .label { color: #666; font-size: 14px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #333; padding: 10px; text-align: center; }
-        th { background: #333; color: white; }
-        .time-range { margin-top: 30px; padding-top: 20px; border-top: 2px solid #ccc; text-align: center; color: #666; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+          font-family: 'SimSun', 'Songti SC', serif;
+          padding: 40px;
+          max-width: 800px;
+          margin: 0 auto;
+          color: #000;
+          line-height: 1.6;
+        }
+        .header {
+          text-align: center;
+          padding-bottom: 20px;
+          margin-bottom: 30px;
+          border-bottom: 2px solid #000;
+        }
+        .header h1 {
+          font-size: 24px;
+          font-weight: bold;
+          letter-spacing: 4px;
+        }
+        .header .subtitle {
+          font-size: 12px;
+          color: #666;
+          margin-top: 8px;
+        }
+        .section {
+          margin-bottom: 24px;
+        }
+        .section-title {
+          font-size: 14px;
+          font-weight: bold;
+          padding: 8px 0;
+          border-bottom: 1px solid #000;
+          margin-bottom: 12px;
+        }
+        .summary-grid {
+          display: table;
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 20px;
+        }
+        .summary-row {
+          display: table-row;
+        }
+        .summary-cell {
+          display: table-cell;
+          width: 20%;
+          padding: 12px 8px;
+          text-align: center;
+          border: 1px solid #333;
+        }
+        .summary-cell .value {
+          font-size: 20px;
+          font-weight: bold;
+          margin-bottom: 4px;
+        }
+        .summary-cell .label {
+          font-size: 11px;
+          color: #333;
+        }
+        .fan-speed-row {
+          padding: 12px;
+          background: #f5f5f5;
+          border: 1px solid #333;
+          text-align: center;
+          font-size: 13px;
+        }
+        table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 12px;
+        }
+        th, td {
+          border: 1px solid #333;
+          padding: 8px 6px;
+          text-align: center;
+        }
+        th {
+          background: #e0e0e0;
+          font-weight: bold;
+          font-size: 11px;
+        }
+        td {
+          font-size: 12px;
+        }
+        .room-id { font-weight: bold; }
+        .cost { font-weight: bold; }
+        .footer {
+          margin-top: 30px;
+          padding-top: 20px;
+          border-top: 1px solid #999;
+          text-align: center;
+          font-size: 11px;
+          color: #666;
+        }
+        .footer p { margin: 4px 0; }
+        @media print {
+          body { padding: 20px; }
+          .header { page-break-after: avoid; }
+          table { page-break-inside: avoid; }
+        }
       </style>
     </head>
     <body>
-      <div class="header"><h1>空调系统统计报表</h1></div>
-      <div class="summary">
-        <div class="summary-item"><div class="value">${rep.totalRooms}</div><div class="label">使用房间数</div></div>
-        <div class="summary-item"><div class="value">${rep.totalServiceRequests}</div><div class="label">服务请求次数</div></div>
-        <div class="summary-item"><div class="value">${rep.totalPowerConsumption.toFixed(2)}</div><div class="label">总耗电量(度)</div></div>
-        <div class="summary-item"><div class="value">¥${rep.totalCost.toFixed(2)}</div><div class="label">总费用</div></div>
-        <div class="summary-item"><div class="value">¥${rep.averageCostPerRoom.toFixed(2)}</div><div class="label">平均费用/房间</div></div>
+      <div class="header">
+        <h1>空调系统统计报表</h1>
+        <div class="subtitle">HVAC System Statistics Report</div>
       </div>
-      <h3>风速使用统计</h3>
-      <p>高风：${rep.fanSpeedDistribution.high} 次 | 中风：${rep.fanSpeedDistribution.medium} 次 | 低风：${rep.fanSpeedDistribution.low} 次</p>
-      <h3>房间明细统计</h3>
-      <table>
-        <thead>
-          <tr><th>房间号</th><th>服务次数</th><th>总耗电(度)</th><th>总费用(元)</th><th>平均温度</th><th>常用风速</th></tr>
-        </thead>
-        <tbody>
-          ${rep.roomStatistics.map(stat => `
+
+      <div class="section">
+        <div class="section-title">一、总体统计</div>
+        <div class="summary-grid">
+          <div class="summary-row">
+            <div class="summary-cell">
+              <div class="value">${rep.totalRooms}</div>
+              <div class="label">使用房间数</div>
+            </div>
+            <div class="summary-cell">
+              <div class="value">${rep.totalServiceRequests}</div>
+              <div class="label">服务请求次数</div>
+            </div>
+            <div class="summary-cell">
+              <div class="value">${formatDurationPrint(totalDuration)}</div>
+              <div class="label">总服务时长</div>
+            </div>
+            <div class="summary-cell">
+              <div class="value">¥${rep.totalCost.toFixed(2)}</div>
+              <div class="label">总费用</div>
+            </div>
+            <div class="summary-cell">
+              <div class="value">¥${avgCostPerRoom.toFixed(2)}</div>
+              <div class="label">平均费用/房间</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">二、风速使用统计</div>
+        <div class="fan-speed-row">
+          高风：<strong>${rep.fanSpeedDistribution.high}</strong> 次 &nbsp;&nbsp;|&nbsp;&nbsp;
+          中风：<strong>${rep.fanSpeedDistribution.medium}</strong> 次 &nbsp;&nbsp;|&nbsp;&nbsp;
+          低风：<strong>${rep.fanSpeedDistribution.low}</strong> 次
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">三、房间明细统计</div>
+        <table>
+          <thead>
             <tr>
-              <td>${stat.roomId}</td>
-              <td>${stat.serviceCount}</td>
-              <td>${stat.totalPowerConsumption.toFixed(2)}</td>
-              <td>¥${stat.totalCost.toFixed(2)}</td>
-              <td>${stat.averageTemp.toFixed(1)}°C</td>
-              <td>${getFanSpeedText(stat.mostUsedFanSpeed)}</td>
+              <th style="width: 60px;">房间号</th>
+              <th style="width: 70px;">服务次数</th>
+              <th style="width: 90px;">服务时长</th>
+              <th style="width: 90px;">总费用(元)</th>
+              <th style="width: 70px;">平均温度</th>
+              <th style="width: 70px;">常用风速</th>
             </tr>
-          `).join('')}
-        </tbody>
-      </table>
-      <div class="time-range">
+          </thead>
+          <tbody>
+            ${rep.roomStatistics.map(stat => `
+              <tr>
+                <td class="room-id">${stat.roomId}</td>
+                <td>${stat.serviceCount}</td>
+                <td>${formatDurationPrint(stat.totalServiceDuration || 0)}</td>
+                <td class="cost">¥${stat.totalCost.toFixed(2)}</td>
+                <td>${stat.averageTemp.toFixed(1)}°C</td>
+                <td>${getFanSpeedText(stat.mostUsedFanSpeed)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="footer">
         <p>统计时间范围：${formatDateTime(rep.startTime)} 至 ${formatDateTime(rep.endTime)}</p>
-        <p>生成时间：${formatDateTime(Date.now())}</p>
+        <p>报表生成时间：${formatDateTime(Date.now())}</p>
       </div>
     </body>
     </html>

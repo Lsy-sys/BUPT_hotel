@@ -131,6 +131,11 @@ class AccommodationFeeBill(db.Model, TimestampMixin):
 
 class DetailRecord(db.Model, TimestampMixin):
     __tablename__ = "bill_details"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "room_id", "detail_type", "start_time", name="uq_bill_detail_room_type_start"
+        ),
+    )
 
     id = db.Column(db.Integer, primary_key=True)
     room_id = db.Column(db.Integer, nullable=False)

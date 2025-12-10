@@ -27,7 +27,6 @@
         :room-rate="bill.roomRate || 280"
         :stay-days="stayDays"
         :room-charge="bill.roomFee || roomCharge"
-        :total-power-consumption="bill.totalPowerConsumption"
         :total-service-duration="bill.totalServiceDuration"
         :ac-cost="bill.acCost"
         :detail-records-total-cost="detailRecordsTotalCost"

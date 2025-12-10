@@ -130,7 +130,7 @@
               计费标准
             </div>
             <div class="info-value">
-              ¥1/度电
+              ¥1/度
             </div>
           </div>
         </div>
@@ -193,9 +193,9 @@ const modes = [
 
 // 风速选项
 const fanSpeeds = [
-  { value: 'LOW', icon: '🌬️', name: '低风', rate: '0.33度/分钟' },
-  { value: 'MEDIUM', icon: '💨', name: '中风', rate: '0.5度/分钟' },
-  { value: 'HIGH', icon: '🌪️', name: '高风', rate: '1度/分钟' }
+  { value: 'LOW', icon: '🌬️', name: '低风', rate: '3分钟/度' },
+  { value: 'MEDIUM', icon: '💨', name: '中风', rate: '2分钟/度' },
+  { value: 'HIGH', icon: '🌪️', name: '高风', rate: '1分钟/度' }
 ];
 
 // 状态

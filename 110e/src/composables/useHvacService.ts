@@ -2,6 +2,14 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { createHvacService } from '../services/ApiAdapter';
 import { POLLING_CONFIG, isRoomActive } from '../config/polling';
 import type { Bill } from '../types';
+import { frontDeskApi } from '../api/hvac';
+
+// 可用房间接口定义
+export interface AvailableRoom {
+  roomId: string;
+  pricePerNight: number;
+  isOccupied: boolean;
+}
 
 export function useHvacService() {
   // 创建服务实例
@@ -12,6 +20,9 @@ export function useHvacService() {
 
   // 历史账单数据（响应式）
   const billsData = ref<Bill[]>([]);
+
+  // 可用房间数据（响应式）
+  const availableRoomsData = ref<AvailableRoom[]>([]);
 
   // 更新间隔定时器
   let updateInterval: ReturnType<typeof setInterval> | null = null;
@@ -26,6 +37,17 @@ export function useHvacService() {
     } catch (error) {
       console.error('加载历史账单失败:', error);
       billsData.value = [];
+    }
+  };
+
+  // 加载可用房间列表
+  const loadAvailableRooms = async () => {
+    try {
+      const rooms = await frontDeskApi.getAvailableRooms();
+      availableRoomsData.value = rooms;
+    } catch (error) {
+      console.error('加载可用房间失败:', error);
+      availableRoomsData.value = [];
     }
   };
 
@@ -49,8 +71,9 @@ export function useHvacService() {
     };
     document.addEventListener('visibilitychange', visibilityHandler);
 
-    // 初始加载历史账单
+    // 初始加载历史账单和可用房间
     loadBillHistory();
+    loadAvailableRooms();
 
     // 启动智能轮询策略
     let pollInterval = POLLING_CONFIG.ACTIVE_INTERVAL;
@@ -59,10 +82,11 @@ export function useHvacService() {
       try {
         // 只在页面可见时才刷新（如果启用了可见性检测）
         if (!POLLING_CONFIG.ENABLE_VISIBILITY_DETECTION || isPageVisible.value) {
-          // 同时刷新房间状态和队列
+          // 同时刷新房间状态、队列和可用房间
           await Promise.all([
             hvacService.refreshRoomStates?.() ?? Promise.resolve(),
-            hvacService.refreshQueues?.() ?? Promise.resolve()
+            hvacService.refreshQueues?.() ?? Promise.resolve(),
+            loadAvailableRooms()
           ]);
         }
 
@@ -144,6 +168,11 @@ export function useHvacService() {
     }).filter(record => record !== null);
   });
 
+  const availableRooms = computed(() => {
+    // 返回可用房间数据
+    return availableRoomsData.value;
+  });
+
   return {
     hvacService,
     refreshKey,
@@ -152,7 +181,8 @@ export function useHvacService() {
     waitingQueue,
     allBills,
     occupiedRooms,
-    checkInRecords
+    checkInRecords,
+    availableRooms
   };
 }
 

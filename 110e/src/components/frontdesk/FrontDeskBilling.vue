@@ -61,14 +61,15 @@ import CheckOutForm from './CheckOutForm.vue';
 import BillDetail from './BillDetail.vue';
 import BillHistory from './BillHistory.vue';
 import { showError } from '../../composables/useDialog';
+import type { AvailableRoom } from '../../composables/useHvacService';
 
 const props = defineProps<{
-  availableRooms: string[];
+  availableRooms: AvailableRoom[];
   occupiedRooms: string[];
   checkInRecords: CheckInRecord[];
   allRooms: RoomState[];
   allBills: Bill[];
-  onCheckIn: (roomId: string, mode: ACMode, guestName?: string, guestPhone?: string, idCard?: string, stayDays?: number, roomType?: string, roomTemp?: number, targetTemp?: number, fanSpeed?: FanSpeed) => Promise<{ success: boolean; message: string; }>;
+  onCheckIn: (roomId: string, mode: ACMode, guestName?: string, guestPhone?: string, idCard?: string, stayDays?: number, roomTemp?: number, targetTemp?: number, fanSpeed?: FanSpeed) => Promise<{ success: boolean; message: string; }>;
   onCheckout: (roomId: string) => Promise<Bill | null>;
 }>();
 
@@ -80,15 +81,16 @@ const activeTab = ref<'checkin' | 'checkout'>('checkin');
 const currentBill = ref<Bill | null>(null);
 
 const availableRoomsForCheckIn = computed(() => {
-  return props.availableRooms.filter(roomId => !props.occupiedRooms.includes(roomId));
+  // 过滤掉已入住的房间
+  return props.availableRooms.filter(room => !props.occupiedRooms.includes(room.roomId));
 });
 
 const handleSwitchToRoom = () => {
   emit('switchToRoom');
 };
 
-const handleCheckIn = async (roomId: string, mode: ACMode, guestName?: string, guestPhone?: string, idCard?: string, stayDays?: number, roomType?: string, roomTemp?: number, targetTemp?: number, fanSpeed?: FanSpeed) => {
-  return await props.onCheckIn(roomId, mode, guestName, guestPhone, idCard, stayDays, roomType, roomTemp, targetTemp, fanSpeed);
+const handleCheckIn = async (roomId: string, mode: ACMode, guestName?: string, guestPhone?: string, idCard?: string, stayDays?: number, roomTemp?: number, targetTemp?: number, fanSpeed?: FanSpeed) => {
+  return await props.onCheckIn(roomId, mode, guestName, guestPhone, idCard, stayDays, roomTemp, targetTemp, fanSpeed);
 };
 
 const handleCheckoutSubmit = async (roomId: string) => {
@@ -134,26 +136,41 @@ const handlePrintBill = (bill: Bill) => {
 
 const generateBillHTML = (bill: Bill): string => {
   const formatDateTime = (timestamp: number) => new Date(timestamp).toLocaleString('zh-CN');
-  const formatTime = (timestamp: number) => new Date(timestamp).toLocaleTimeString('zh-CN');
-  const formatDuration = (seconds: number) => {
-    if (seconds === 0) return '-';
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    const parts = [];
-    if (hours > 0) parts.push(`${hours}小时`);
-    if (minutes > 0) parts.push(`${minutes}分钟`);
-    if (secs > 0) parts.push(`${secs}秒`);
-    return parts.join('') || '-';
+  // 格式化详单时间（支持字符串和数字格式）
+  const formatTime = (timestamp: number | string) => {
+    // 如果是字符串格式 "2025-12-09 01:04:57"，直接提取 MM-DD HH:MM:SS
+    if (typeof timestamp === 'string') {
+      const match = timestamp.match(/\d{4}-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+      if (match) {
+        return `${match[1]}-${match[2]} ${match[3]}:${match[4]}:${match[5]}`;
+      }
+      return timestamp;
+    }
+    const date = new Date(timestamp);
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${month}-${day} ${hours}:${minutes}:${seconds}`;
+  };
+  const formatDurationSeconds = (seconds: number) => {
+    if (seconds === 0) return '0秒';
+    return `${seconds}秒`;
   };
 
   // 计算入住天数
   const stayDays = bill.stayDays || Math.ceil((bill.checkOutTime - bill.checkInTime) / (1000 * 60 * 60 * 24)) || 1;
   const roomRate = bill.roomRate || 280;
-  const roomCharge = bill.roomCharge || (roomRate * stayDays);
-  const deposit = bill.deposit || 200; // 统一押金为 200 元
+  const roomCharge = bill.roomFee || (roomRate * stayDays);
+  const deposit = bill.deposit || 200;
   const subtotal = roomCharge + bill.acCost;
-  const detailTotal = bill.detailRecords.reduce((sum, r) => sum + r.cost, 0);
+
+  // 获取累计费用（直接使用后端返回的值）
+  const getAccumulatedCost = (index: number) => {
+    const record = bill.detailRecords[index];
+    return record?.accumulatedCost ?? 0;
+  };
 
   return `
     <!DOCTYPE html>
@@ -208,23 +225,21 @@ const generateBillHTML = (bill: Bill): string => {
         </div>
         <div class="charge-row">
           <span>空调使用费</span>
-          <span>耗电 ${bill.totalPowerConsumption.toFixed(3)} 度 (${formatDuration(bill.totalServiceDuration)})</span>
+          <span>¥1/度（调温计费）</span>
           <span>¥${bill.acCost.toFixed(2)}</span>
         </div>
-        ${detailTotal !== bill.acCost ? `
-        <div style="padding: 8px; background: #fef3c7; border-left: 4px solid #f59e0b; margin: 8px 0; font-size: 12px; color: #92400e;">
-          ⚠️ 注意：详单记录总和 ¥${detailTotal.toFixed(2)}，实际费用以系统计算为准
+        <div style="padding: 8px; background: #f5f5f5; border-left: 3px solid #666; margin: 8px 0; font-size: 11px; color: #666;">
+          💡 实际费用以系统计算为准
         </div>
-        ` : ''}
         <div class="row subtotal">
-          <span>应付总额：</span>
+          <span>小计：</span>
           <span>¥${subtotal.toFixed(2)}</span>
         </div>
       </div>
       
-      <div class="section" style="background: #dbeafe; border: 2px solid #93c5fd;">
-        <div class="section-title" style="color: #1e40af;">🔒 押金处理说明</div>
-        <div style="color: #1e40af; line-height: 1.8;">
+      <div class="section" style="background: #f9f9f9; border: 2px solid #ccc;">
+        <div class="section-title">🔒 押金处理说明</div>
+        <div style="line-height: 1.8; color: #333;">
           • 入住时收取押金：¥${deposit.toFixed(2)}<br>
           • 退房时原路退还，与住宿费用分离计算<br>
           • 押金不包含在应付金额中
@@ -236,20 +251,33 @@ const generateBillHTML = (bill: Bill): string => {
       </div>
       
       <div class="section">
-        <div class="section-title">📋 空调使用详单 (共 ${bill.detailRecords.length} 条，合计 ¥${detailTotal.toFixed(2)})</div>
+        <div class="section-title">📋 空调使用详单（共 ${bill.detailRecords.length} 条请求记录）</div>
         <table>
           <thead>
-            <tr><th>时间</th><th>操作</th><th>温度</th><th>时长</th><th>耗电(度)</th><th>费用(元)</th></tr>
+            <tr>
+              <th style="width: 40px;">序号</th>
+              <th style="width: 120px;">请求时间</th>
+              <th style="width: 100px;">操作类型</th>
+              <th style="width: 60px;">风速</th>
+              <th style="width: 80px;">目标温度</th>
+              <th style="width: 80px;">当前温度</th>
+              <th style="width: 80px;">服务时长</th>
+              <th style="width: 80px;">当前费用</th>
+              <th style="width: 80px;">累计费用</th>
+            </tr>
           </thead>
           <tbody>
-            ${bill.detailRecords.map(record => `
+            ${bill.detailRecords.map((record, index) => `
               <tr>
-                <td>${formatTime(record.timestamp)}</td>
+                <td style="text-align: center;">${index + 1}</td>
+                <td style="font-family: 'Courier New', monospace;">${formatTime(record.timestamp)}</td>
                 <td>${record.action}</td>
+                <td>${record.fanSpeed ? (record.fanSpeed === 'LOW' ? '低风' : record.fanSpeed === 'MEDIUM' ? '中风' : record.fanSpeed === 'HIGH' ? '高风' : record.fanSpeed) : '-'}</td>
+                <td>${record.targetTemp ? record.targetTemp.toFixed(1) + '°C' : '-'}</td>
                 <td>${record.currentTemp.toFixed(1)}°C</td>
-                <td>${formatDuration(record.duration)}</td>
-                <td>${record.powerConsumption.toFixed(3)}</td>
-                <td>¥${record.cost.toFixed(2)}</td>
+                <td style="font-family: 'Courier New', monospace;">${formatDurationSeconds(record.duration)}</td>
+                <td style="font-weight: bold;">¥${record.cost.toFixed(2)}</td>
+                <td style="font-weight: bold;">¥${getAccumulatedCost(index).toFixed(2)}</td>
               </tr>
             `).join('')}
           </tbody>

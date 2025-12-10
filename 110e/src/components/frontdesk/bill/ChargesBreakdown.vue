@@ -15,12 +15,12 @@
     <div class="charge-section">
       <div class="charge-row">
         <span>空调使用费</span>
-        <span>耗电 {{ totalPowerConsumption.toFixed(3) }} 度 ({{ formatDuration(totalServiceDuration) }})</span>
+        <span>¥1/度（调温计费）</span>
         <span class="amount">¥{{ acCost.toFixed(2) }}</span>
       </div>
-      <!-- 详单费用总和提示 -->
-      <div v-if="Math.abs(detailRecordsTotalCost - acCost) > 0.01" class="charge-note">
-        <span>⚠️ 注意：详单记录总和 ¥{{ detailRecordsTotalCost.toFixed(2) }}，实际费用以系统计算为准</span>
+      <!-- 计费说明 -->
+      <div class="charge-note info">
+        <span>💡 实际费用以系统计算为准</span>
       </div>
     </div>
 
@@ -77,7 +77,6 @@ const props = defineProps<{
   roomRate: number;
   stayDays: number;
   roomCharge: number;
-  totalPowerConsumption: number;
   totalServiceDuration: number;
   acCost: number; // 空调费用（不是总费用）
   detailRecordsTotalCost: number;
@@ -164,6 +163,12 @@ const formatDuration = (seconds: number): string => {
   border-radius: 4px;
   font-size: 12px;
   color: #92400e;
+}
+
+.charge-note.info {
+  background: #dbeafe;
+  border-left: 3px solid #3b82f6;
+  color: #1e40af;
 }
 
 .charge-subtotal {

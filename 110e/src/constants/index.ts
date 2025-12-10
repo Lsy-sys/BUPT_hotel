@@ -41,8 +41,8 @@ export const TEMP_CHANGE_RATE_OFF = 0.5;
 // 目标温度偏离阈值（度）
 export const TEMP_DEVIATION_THRESHOLD = 1;
 
-// 最大服务对象数量（根据中央空调服务能力配置，表示同时最多可为多少间房间送风）
-export const MAX_SERVICE_OBJECTS = 5;
+// 最大服务对象数量（服务队列上限，表示同时最多可为多少间房间送风）
+export const MAX_SERVICE_OBJECTS = 3;
 
 // 等待时长（秒，默认值，可配置）
 export const WAIT_TIME = 120; // 2分钟
@@ -60,16 +60,18 @@ export const FAN_SPEED_PRIORITY = {
   [FanSpeed.LOW]: 1
 };
 
-// 房间数量（默认配置）
-export const TOTAL_ROOMS = 20;
+// 房间数量
+export const TOTAL_ROOMS = 5;
 
-// 可用房间列表（房间号：101-108, 201-206, 301-306）
-export const ROOM_IDS = [
-  // 1楼：101-108
-  ...Array.from({ length: 8 }, (_, i) => `${101 + i}`),
-  // 2楼：201-206
-  ...Array.from({ length: 6 }, (_, i) => `${201 + i}`),
-  // 3楼：301-306
-  ...Array.from({ length: 6 }, (_, i) => `${301 + i}`)
-];
+// 可用房间列表（房间号：1-5）
+export const ROOM_IDS = ['1', '2', '3', '4', '5'];
+
+// 房间价格（元/天）
+export const ROOM_PRICES: Record<string, number> = {
+  '1': 100,
+  '2': 125,
+  '3': 150,
+  '4': 200,
+  '5': 100
+};
 

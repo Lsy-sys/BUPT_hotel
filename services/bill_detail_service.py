@@ -60,8 +60,22 @@ class BillDetailService:
             detail_type=detail_type,
         )
         db.session.add(detail)
-        db.session.commit()
-        return detail
+        try:
+            db.session.commit()
+            return detail
+        except Exception:
+            # 兜底处理并发唯一约束冲突：回滚后返回已存在记录
+            db.session.rollback()
+            db.session.expire_all()
+            existing = DetailRecord.query.filter(
+                DetailRecord.room_id == room_id,
+                DetailRecord.detail_type == detail_type,
+                DetailRecord.start_time == start_time
+            ).first()
+            if existing:
+                print(f"[BillDetailService] 唯一约束命中，返回已存在详单 id={existing.id}")
+                return existing
+            raise
 
     def getBillDetailsByRoomIdAndTimeRange(
         self, room_id: int, start: datetime, end: datetime, customer_id: int | None = None

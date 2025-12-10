@@ -2,6 +2,7 @@
  * Vue Router 配置
  */
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
+import LandingPage from '../components/landing/LandingPage.vue';
 import Homepage from '../components/homepage/Homepage.vue';
 import MainLayout from '../components/views/MainLayout.vue';
 import RoomView from '../components/views/RoomView.vue';
@@ -12,6 +13,12 @@ import ManagerView from '../components/views/ManagerView.vue';
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
+    name: 'landing',
+    component: LandingPage,
+    meta: { requiresAuth: false }
+  },
+  {
+    path: '/home',
     name: 'home',
     component: Homepage,
     meta: { requiresAuth: false }

@@ -89,10 +89,11 @@ import Step1RoomSelection from './checkin/Step1RoomSelection.vue';
 import Step2GuestInfo from './checkin/Step2GuestInfo.vue';
 import Step3ACSettings from './checkin/Step3ACSettings.vue';
 import Step4Confirmation from './checkin/Step4Confirmation.vue';
+import type { AvailableRoom } from '../../composables/useHvacService';
 
 const props = defineProps<{
-  availableRooms: string[];
-  checkInRecords: any[];
+  availableRooms: AvailableRoom[];
+  checkInRecords: unknown[];
   onCheckIn: (
     roomId: string,
     mode: ACMode,
@@ -100,7 +101,6 @@ const props = defineProps<{
     guestPhone?: string,
     idCard?: string,
     stayDays?: number,
-    roomType?: string,
     roomTemp?: number,
     targetTemp?: number,
     fanSpeed?: FanSpeed
@@ -122,7 +122,7 @@ const checkedInRoomId = ref('');
 // 表单数据
 const form = reactive({
   roomId: '',
-  mode: ACMode.COOLING,
+  mode: ACMode.COOLING as ACMode,
   guestName: '',
   guestPhone: '',
   idType: 'id_card',
@@ -171,26 +171,11 @@ const acSettings = computed({
   }
 });
 
-// 获取房间价格
+// 获取房间价格（从API数据中获取）
 const getRoomPrice = (roomId: string): number => {
   if (!roomId) return 0;
-  const roomNum = parseInt(roomId);
-  if (roomNum >= 101 && roomNum <= 104) return 150;
-  if (roomNum >= 105 && roomNum <= 108) return 200;
-  if (roomNum >= 201 && roomNum <= 206) return 400;
-  if (roomNum >= 301 && roomNum <= 306) return 800;
-  return 0;
-};
-
-// 获取房间类型
-const getRoomType = (roomId: string): string => {
-  if (!roomId) return '';
-  const roomNum = parseInt(roomId);
-  if (roomNum >= 101 && roomNum <= 104) return 'STANDARD_SINGLE';
-  if (roomNum >= 105 && roomNum <= 108) return 'STANDARD_DOUBLE';
-  if (roomNum >= 201 && roomNum <= 206) return 'DELUXE';
-  if (roomNum >= 301 && roomNum <= 306) return 'SUITE';
-  return '';
+  const room = props.availableRooms.find(r => r.roomId === roomId);
+  return room ? room.pricePerNight : 0;
 };
 
 // 验证当前步骤
@@ -231,7 +216,6 @@ const handleSubmit = async () => {
       form.guestPhone,
       form.idNumber,
       form.stayDays,
-      getRoomType(form.roomId),
       form.roomTemp,
       form.targetTemp,
       form.fanSpeed

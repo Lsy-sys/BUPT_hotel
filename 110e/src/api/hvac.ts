@@ -1,143 +1,103 @@
 /**
  * HVAC 系统 API 接口
  */
-// @ts-nocheck
-/* eslint-env es2020 */
 import request from './request';
 import type {
   RoomState,
   DetailRecord,
-  Bill,
-  CheckInRecord,
-  StatisticsReport,
-  ServiceRequest
+  CheckInRecord
 } from '../types';
 import { ACMode, FanSpeed } from '../types';
+import { ROOM_PRICES, DEFAULT_TEMP } from '../constants';
 
-// 工具：统一获取房间列表，用于过滤已入住/可用房间
-async function fetchRooms(): Promise<any[]> {
-  try {
-    const rooms = await request.get<any[]>('/hotel/rooms');
-    return rooms || [];
-  } catch (e) {
-    console.error('获取房间列表失败', e);
-    return [];
-  }
-}
+const normalizeRoomId = (id: string | number | undefined) => String(id ?? '');
 
 /**
  * 前台管理接口
  */
 export const frontDeskApi = {
   // 办理入住（支持空调初始化参数）
-  checkIn(
+  async checkIn(
     roomId: string,
     guestName: string,
     guestPhone: string,
     idCard: string,
     stayDays: number,
-    roomType: string,
     mode?: ACMode,
     roomTemp?: number,
     targetTemp?: number,
     fanSpeed?: FanSpeed
   ) {
-    // 后端 /hotel/checkin 接收房间与客户信息
-    return request.post('/hotel/checkin', {
-      roomId,
+    // 后端只需要基本入住信息，其余字段由后端默认处理
+    const payload = {
+      roomId: Number(roomId),
       name: guestName,
       phoneNumber: guestPhone,
-      idCard,
-      stayDays,
-      roomType,
-      mode: mode || ACMode.COOLING,
-      roomTemp: roomTemp ?? 25,
-      targetTemp: targetTemp ?? 25,
-      fanSpeed: fanSpeed || FanSpeed.MEDIUM
-    });
+      idCard
+    };
+    // 额外参数（模式/温度）后端会忽略，不影响
+    return request.post('/hotel/checkin', payload);
   },
 
   // 办理退房
   checkOut(roomId: string) {
-    return request.post<Bill>(`/hotel/checkout/${roomId}`);
+    return request.post(`/hotel/checkout/${roomId}`);
   },
 
-  // 获取账单
-  getBill(roomId: string) {
-    // 当前后端未提供单独账单查询，退房返回账单，这里直接返回 null 占位
-    return Promise.resolve(null as unknown as Bill);
+  // 获取账单（后端暂无单独接口，返回空）
+  async getBill(_roomId?: string) {
+    return null;
   },
 
-  // 获取所有账单
-  getAllBills() {
-    // 后端无对应接口，返回空数组占位
-    return Promise.resolve([] as Bill[]);
-  },
-
-  // 获取已入住房间列表
-  getOccupiedRooms() {
-    return fetchRooms().then((rooms) =>
-      rooms
-        .filter((r) => r.status === 'OCCUPIED')
-        .map((r) => String(r.id ?? r.roomId ?? r.room_id ?? ''))
-        .filter(Boolean)
-    );
+  // 获取所有账单（后端暂无列表接口，返回空数组）
+  async getAllBills() {
+    return [];
   },
 
   // 获取可入住房间列表
-  getAvailableRooms(params?: {
-    roomType?: string;
-    minPrice?: number;
-    maxPrice?: number;
-    floor?: number;
-  }) {
-    // 优先调用后端可用房间详情接口，失败回退 rooms 列表过滤
-    return request
-      .get<any[]>('/hotel/rooms/available')
-      .then((rooms) =>
-        rooms
-          .filter((r) => r.status === 'AVAILABLE')
-          .map((r) => ({
-            ...r,
-            roomType: params?.roomType ?? r.roomType,
-            price: r.price
-          }))
-      )
-      .catch(() =>
-        fetchRooms().then((rooms) =>
-          rooms
-            .filter((r) => r.status === 'AVAILABLE')
-            .map((r) => ({
-              ...r,
-              roomType: params?.roomType ?? r.roomType,
-              price: r.price
-            }))
-        )
-      );
+  async getAvailableRooms() {
+    const rooms = await request.get<any[]>('/hotel/rooms/available');
+    return rooms.map((room) => {
+      const rid = normalizeRoomId(room.id ?? room.roomId ?? room.room_id);
+      return {
+        roomId: rid,
+        pricePerNight: ROOM_PRICES[rid] ?? 100,
+        isOccupied: false
+      };
+    });
   },
 
-  // 获取入住记录
-  getCheckInRecords() {
-    // 后端未提供入住记录接口，使用房间列表占位
-    return fetchRooms().then((rooms) =>
-      rooms
-        .filter((r) => r.status === 'OCCUPIED')
-        .map(
-          (r) =>
-            ({
-              roomId: String(r.id ?? r.roomId ?? r.room_id ?? ''),
-              checkedOut: false,
-              guestName: r.customerName ?? r.guestName ?? '住客',
-              roomType: r.roomType ?? 'STANDARD'
-            } as CheckInRecord)
-        )
-    );
+  // 获取已入住房间列表
+  async getOccupiedRooms() {
+    const rooms = await request.get<any[]>('/hotel/rooms');
+    return rooms
+      .filter((room) => room.status && room.status !== 'AVAILABLE')
+      .map((room) => normalizeRoomId(room.id));
   },
 
-  // 获取详单记录
+  // 获取所有房间的基础信息
+  getAllRooms() {
+    return request.get<any[]>('/hotel/rooms');
+  },
+
+  // 获取入住记录（后端暂无独立接口，基于房间状态模拟）
+  async getCheckInRecords(): Promise<CheckInRecord[]> {
+    const rooms = await request.get<any[]>('/hotel/rooms');
+    return rooms
+      .filter((room) => room.status && room.status !== 'AVAILABLE')
+      .map((room) => ({
+        roomId: normalizeRoomId(room.id),
+        checkInTime: Date.now(),
+        mode: room.acMode || ACMode.COOLING,
+        checkedOut: false,
+        guestName: room.customer_name,
+        guestPhone: room.phone_number
+      })) as CheckInRecord[];
+  },
+
+  // 获取详单记录（使用报表接口）
   getDetailRecords(roomId: string) {
-    // 后端无对应 JSON 详单接口（仅 CSV 导出），返回空数组占位
-    return Promise.resolve([] as DetailRecord[]);
+    return request.get<DetailRecord[]>('/report/room', { params: { roomId: Number(roomId) } });
   }
 };
 
@@ -147,37 +107,42 @@ export const frontDeskApi = {
 export const roomApi = {
   // 获取房间状态
   getRoomState(roomId: string) {
-    return request.get<RoomState>('/ac/state', { params: { roomId } });
+    return request.get<RoomState>('/ac/state', { params: { roomId: Number(roomId) } });
   },
 
-  // 开机 (后端不接受额外参数，只接受 roomId)
+  // 开机
   turnOn(roomId: string) {
-    return request.post('/ac/power', { roomId });
+    return request.post('/ac/power', { roomId: Number(roomId) });
   },
 
   // 关机
   turnOff(roomId: string) {
-    return request.post('/ac/power/off', { roomId });
+    return request.post('/ac/power/off', { roomId: Number(roomId) });
   },
 
   // 发送请求（调温、调风）
   sendRequest(roomId: string, targetTemp: number, fanSpeed: FanSpeed, mode: ACMode) {
-    // 分别调用后端温度/风速/模式接口
-    return Promise.all([
-      request.post('/ac/temp', { roomId, targetTemp }),
-      request.post('/ac/speed', { roomId, fanSpeed }),
-      request.post('/ac/mode', { roomId, mode })
-    ]).then(() => undefined);
+    const rid = Number(roomId);
+    const tasks: Promise<any>[] = [];
+    if (mode) tasks.push(request.post('/ac/mode', { roomId: rid, mode }));
+    if (typeof targetTemp === 'number') tasks.push(request.post('/ac/temp', { roomId: rid, targetTemp }));
+    if (fanSpeed) tasks.push(request.post('/ac/speed', { roomId: rid, fanSpeed }));
+    return Promise.all(tasks);
   },
 
   // 初始化房间参数
   initializeRoom(roomId: string, mode: ACMode, roomTemp: number, targetTemp: number, fanSpeed: FanSpeed) {
-    // 后端无初始化接口，退化为设置模式/温度/风速
-    return Promise.all([
-      request.post('/ac/mode', { roomId, mode }),
-      request.post('/ac/temp', { roomId, targetTemp }),
-      request.post('/ac/speed', { roomId, fanSpeed })
-    ]).then(() => this.getRoomState(roomId));
+    return request.post('/test/initRoom', {
+      roomId: Number(roomId),
+      temperature: roomTemp ?? DEFAULT_TEMP,
+      defaultTemp: roomTemp ?? DEFAULT_TEMP,
+      dailyRate: ROOM_PRICES[roomId] ?? 100
+    });
+  },
+
+  // 切换模式
+  setMode(roomId: string, mode: ACMode) {
+    return request.post('/ac/mode', { roomId: Number(roomId), mode });
   }
 };
 
@@ -192,17 +157,16 @@ export const adminApi = {
 
   // 获取服务队列
   getServiceQueue() {
-    return request.get<any>('/monitor/status').then((res) => res?.serving_queue || res?.servingQueue || []);
+    return request.get<any>('/monitor/status').then((res) => res?.servingQueue || []);
   },
 
   // 获取等待队列
   getWaitingQueue() {
-    return request.get<any>('/monitor/status').then((res) => res?.waiting_queue || res?.waitingQueue || []);
+    return request.get<any>('/monitor/status').then((res) => res?.waitingQueue || []);
   },
 
   // 一键关机
   turnOffAll() {
-    // 后端未提供批量接口，留空实现
     return Promise.resolve();
   },
 
@@ -221,17 +185,22 @@ export const adminApi = {
  * 经理统计接口
  */
 export const managerApi = {
-  // 获取统计报表（后端使用 POST 方法，传递时间戳毫秒）
+  // 获取统计报表（使用周报接口，按开始日期计算）
   getStatistics(startTime: number, endTime: number) {
-    // 后端提供 /report/daily 与 /report/weekly，这里返回周报为兼容
-    const startDate = new Date(startTime).toISOString().slice(0, 10);
-    return request.get<StatisticsReport>('/report/weekly', { params: { startDate } });
+    const formatDate = (timestamp: number): string => {
+      const date = new Date(timestamp);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    return request.get('/report/weekly', { params: { startDate: formatDate(startTime), endDate: formatDate(endTime) } });
   },
 
   // 获取所有账单
   getAllBills() {
-    // 后端无对应 JSON 账单接口，返回空数组占位
-    return Promise.resolve([] as Bill[]);
+    return Promise.resolve([]);
   }
 };
 

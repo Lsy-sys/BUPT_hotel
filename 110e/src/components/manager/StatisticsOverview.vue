@@ -18,10 +18,10 @@
     </div>
     <div class="stat-card">
       <div class="stat-label">
-        总耗电量(度)
+        总服务时长
       </div>
       <div class="stat-value">
-        {{ totalPower.toFixed(2) }}
+        {{ formatDuration(totalDuration) }}
       </div>
     </div>
     <div class="stat-card highlight">
@@ -37,20 +37,36 @@
         平均费用/房间
       </div>
       <div class="stat-value">
-        ¥{{ avgCost.toFixed(2) }}
+        ¥{{ calculatedAvgCost.toFixed(2) }}
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-const { totalRooms, totalRequests, totalPower, totalCost, avgCost } = defineProps<{
+import { computed } from 'vue';
+
+const props = defineProps<{
   totalRooms: number;
   totalRequests: number;
-  totalPower: number;
+  totalDuration: number; // 总服务时长（秒）
   totalCost: number;
-  avgCost: number;
 }>();
+
+// 计算平均费用/房间（避免除以0）
+const calculatedAvgCost = computed(() => {
+  if (props.totalRooms === 0) return 0;
+  return props.totalCost / props.totalRooms;
+});
+
+// 格式化时长
+const formatDuration = (seconds: number): string => {
+  if (seconds < 60) return `${seconds}秒`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}分${seconds % 60}秒`;
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  return `${hours}时${mins}分`;
+};
 </script>
 
 <style scoped>
@@ -59,6 +75,18 @@ const { totalRooms, totalRequests, totalPower, totalCost, avgCost } = defineProp
   grid-template-columns: repeat(5, 1fr);
   gap: 16px;
   margin-bottom: 30px;
+}
+
+@media (max-width: 1200px) {
+  .overview-stats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .overview-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .stat-card {

@@ -46,8 +46,8 @@
 
       <!-- 费用显示 -->
       <BillingDisplay
-        :total-power="roomState.totalPowerConsumption"
         :total-cost="roomState.totalCost"
+        :stage-cost="stageCost"
       />
     </div>
 
@@ -110,16 +110,39 @@ const props = defineProps<{
 
 const targetTemp = ref(25);
 const fanSpeed = ref<FanSpeed>(FanSpeed.MEDIUM);
+const lastTotalCost = ref(0); // 记录上次关机时的累计费用
+
+// 防抖定时器：用于温度和风速调节
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+const DEBOUNCE_DELAY = 1000; // 1秒防抖延迟
 
 const tempRange = computed(() => {
   if (!props.roomState) return { min: 18, max: 30 };
   return TEMP_RANGE[props.roomState.mode];
 });
 
-watch(() => props.roomState, (newState) => {
+// 计算阶段费用（本次开机费用）
+const stageCost = computed(() => {
+  if (!props.roomState || !props.roomState.isOn) {
+    return 0;
+  }
+  // 阶段费用 = 当前累计费用 - 上次关机时的累计费用
+  return Math.max(0, props.roomState.totalCost - lastTotalCost.value);
+});
+
+watch(() => props.roomState, (newState, oldState) => {
   if (newState) {
     targetTemp.value = newState.targetTemp;
     fanSpeed.value = newState.fanSpeed;
+
+    // 检测开关机状态变化
+    if (oldState && !oldState.isOn && newState.isOn) {
+      // 刚开机：记录开机前的累计费用
+      lastTotalCost.value = oldState.totalCost || 0;
+    } else if (oldState && oldState.isOn && !newState.isOn) {
+      // 刚关机：更新最后的累计费用
+      lastTotalCost.value = newState.totalCost || 0;
+    }
   }
 }, { immediate: true, deep: true });
 
@@ -138,12 +161,32 @@ const handleModeSwitch = (mode: ACMode) => {
 
 const handleTempUpdate = (temp: number) => {
   targetTemp.value = temp;
-  props.onUpdateSettings(targetTemp.value, fanSpeed.value);
+  
+  // 清除之前的定时器
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+  }
+  
+  // 设置新的定时器，1秒后发送请求
+  debounceTimer = setTimeout(() => {
+    props.onUpdateSettings(targetTemp.value, fanSpeed.value);
+    debounceTimer = null;
+  }, DEBOUNCE_DELAY);
 };
 
 const handleFanSpeedChange = (speed: FanSpeed) => {
   fanSpeed.value = speed;
-  props.onUpdateSettings(targetTemp.value, fanSpeed.value);
+  
+  // 清除之前的定时器
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+  }
+  
+  // 设置新的定时器，1秒后发送请求
+  debounceTimer = setTimeout(() => {
+    props.onUpdateSettings(targetTemp.value, fanSpeed.value);
+    debounceTimer = null;
+  }, DEBOUNCE_DELAY);
 };
 
 const getStatusText = (status: RoomStatus): string => {

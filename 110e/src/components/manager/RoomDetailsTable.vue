@@ -5,7 +5,7 @@
       <div class="details-header">
         <span>房间号</span>
         <span>服务次数</span>
-        <span>总耗电(度)</span>
+        <span>服务时长</span>
         <span>总费用(元)</span>
         <span>平均温度</span>
         <span>常用风速</span>
@@ -13,7 +13,7 @@
       <div v-for="stat in sortedStats" :key="stat.roomId" class="details-row">
         <span class="room-id">{{ stat.roomId }}</span>
         <span>{{ stat.serviceCount }}</span>
-        <span>{{ stat.totalPowerConsumption.toFixed(2) }}</span>
+        <span>{{ formatDuration(stat.totalServiceDuration) }}</span>
         <span class="cost">¥{{ stat.totalCost.toFixed(2) }}</span>
         <span>{{ stat.averageTemp.toFixed(1) }}°C</span>
         <span>{{ getFanSpeedText(stat.mostUsedFanSpeed) }}</span>
@@ -34,6 +34,16 @@ const props = defineProps<{
 const sortedStats = computed(() => {
   return [...props.roomStats].sort((a, b) => b.totalCost - a.totalCost);
 });
+
+// 格式化时长
+const formatDuration = (seconds: number): string => {
+  if (!seconds || seconds === 0) return '0秒';
+  if (seconds < 60) return `${seconds}秒`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}分${seconds % 60}秒`;
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  return `${hours}时${mins}分`;
+};
 
 const getFanSpeedText = (speed: FanSpeed): string => {
   const speedMap = {

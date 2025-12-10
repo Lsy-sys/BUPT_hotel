@@ -19,10 +19,11 @@ import FrontDeskBilling from '../frontdesk/FrontDeskBilling.vue';
 import type { IHvacService } from '../../services/ApiAdapter';
 import type { Bill, CheckInRecord, RoomState } from '../../types/index';
 import { ACMode, FanSpeed } from '../../types/index';
+import type { AvailableRoom } from '../../composables/useHvacService';
 
 const props = defineProps<{
   hvacService: IHvacService;
-  availableRooms: string[];
+  availableRooms: AvailableRoom[];
   occupiedRooms: string[];
   checkInRecords: CheckInRecord[];
   allRooms: RoomState[];
@@ -53,12 +54,11 @@ const handleCheckIn = async (
   guestPhone?: string,
   idCard?: string,
   stayDays?: number,
-  roomType?: string,
   roomTemp?: number,
   targetTemp?: number,
   fanSpeed?: FanSpeed
 ): Promise<{ success: boolean; message: string }> => {
-  const result = await props.hvacService.checkIn(roomId, mode, guestName, guestPhone, idCard, stayDays, roomType, roomTemp, targetTemp, fanSpeed);
+  const result = await props.hvacService.checkIn(roomId, mode, guestName, guestPhone, idCard, stayDays, roomTemp, targetTemp, fanSpeed);
 
   if (result.success) {
     // 入住成功，手动刷新房间状态和入住记录

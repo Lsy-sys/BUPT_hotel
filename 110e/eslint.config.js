@@ -2,6 +2,8 @@ import js from '@eslint/js';
 import typescript from 'typescript-eslint';
 import pluginVue from 'eslint-plugin-vue';
 
+const tsconfigPath = new URL('./tsconfig.app.json', import.meta.url).pathname;
+
 export default [
   // ESLint 推荐配置
   js.configs.recommended,
@@ -32,10 +34,15 @@ export default [
         HTMLInputElement: 'readonly',
         HTMLElement: 'readonly',
         NodeJS: 'readonly',
-        URL: 'readonly'
+        URL: 'readonly',
+        Map: 'readonly',
+        Set: 'readonly',
+        Promise: 'readonly'
       },
       parserOptions: {
-        parser: '@typescript-eslint/parser'
+        parser: '@typescript-eslint/parser',
+        project: tsconfigPath,
+        tsconfigRootDir: new URL('.', import.meta.url).pathname
       }
     },
     rules: {

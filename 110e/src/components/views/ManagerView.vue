@@ -23,7 +23,6 @@ const handleGenerateReport = async (startTime: number, endTime: number): Promise
 
   // 合并当前运行数据
   let totalCost = historicalReport.totalCost;
-  let totalPowerConsumption = historicalReport.totalPowerConsumption;
   const activeRooms = new Set<string>();
 
   // 添加当前正在运行的房间数据
@@ -34,7 +33,6 @@ const handleGenerateReport = async (startTime: number, endTime: number): Promise
       const existingRoom = historicalReport.roomStatistics.find(r => r.roomId === room.roomId);
       if (!existingRoom) {
         totalCost += room.totalCost;
-        totalPowerConsumption += room.totalPowerConsumption;
       }
     }
   });
@@ -43,7 +41,6 @@ const handleGenerateReport = async (startTime: number, endTime: number): Promise
     ...historicalReport,
     totalRooms: Math.max(historicalReport.totalRooms, activeRooms.size),
     totalCost,
-    totalPowerConsumption,
     averageCostPerRoom: activeRooms.size > 0 ? totalCost / activeRooms.size : 0
   };
 };

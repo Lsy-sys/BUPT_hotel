@@ -84,6 +84,7 @@ CREATE TABLE bill_details (
     detail_type VARCHAR(50) DEFAULT 'AC',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_bill_detail_room_type_start (room_id, detail_type, start_time),
     INDEX idx_room_detail (room_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

@@ -61,10 +61,6 @@
           <span class="value">{{ currentRoom.targetTemp }}°C</span>
         </div>
         <div class="info-item">
-          <span class="label">当前耗电：</span>
-          <span class="value">{{ currentRoom.totalPowerConsumption.toFixed(3) }} 度</span>
-        </div>
-        <div class="info-item">
           <span class="label">当前费用：</span>
           <span class="value highlight">¥{{ currentRoom.totalCost.toFixed(2) }}</span>
         </div>
